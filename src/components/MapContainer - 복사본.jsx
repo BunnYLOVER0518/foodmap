@@ -12,24 +12,25 @@ const MapContainer = () => {
   const [tempMarker, setTempMarker] = useState(null);
   const [tempInfoWindow, setTempInfoWindow] = useState(null);
 
-  useEffect(() => {
-    const scriptId = "kakao-map-script";
-    const existingScript = document.getElementById(scriptId);
+useEffect(() => {
+  const scriptId = "kakao-map-script";
+  const existingScript = document.getElementById(scriptId);
 
-    if (window.kakao && window.kakao.maps) {
-      window.kakao.maps.load(() => drawMap());
-      return;
-    }
+  if (window.kakao && window.kakao.maps) {
+    // ✅ 이미 로드된 경우 → 딱 한 번만 drawMap 실행
+    window.kakao.maps.load(() => drawMap());
+    return;
+  }
 
-    if (existingScript) return;
+  if (existingScript) return; // 중복 삽입 방지
 
-    const script = document.createElement("script");
-    script.id = scriptId;
-    script.src = "https://dapi.kakao.com/v2/maps/sdk.js?appkey=03c7983b8aaebda8b6d24623d598eab1&autoload=false&libraries=services";
-    script.async = true;
-    script.onload = () => window.kakao.maps.load(() => drawMap());
-    document.head.appendChild(script);
-  }, []);
+  const script = document.createElement("script");
+  script.id = scriptId;
+  script.src = "https://dapi.kakao.com/v2/maps/sdk.js?appkey=03c7983b8aaebda8b6d24623d598eab1&autoload=false&libraries=services";
+  script.async = true;
+  script.onload = () => window.kakao.maps.load(() => drawMap());
+  document.head.appendChild(script);
+}, []);
 
 
   function handleDeleteMarker() {
@@ -90,9 +91,42 @@ const MapContainer = () => {
       .then(res => res.json())
       .then(data => {
         data.forEach(place => {
-          createHoverableMarker(place, map);
+          const position = new window.kakao.maps.LatLng(place.latitude, place.longitude);
+          const marker = new window.kakao.maps.Marker({
+            position: position,
+            map: map
+          });
+
+          const infowindow = new window.kakao.maps.InfoWindow({
+            content: `<div style="
+              padding: 10px;
+              font-size: 14px;
+              width: 250px;
+              line-height: 1.6;
+              word-break: keep-all;
+            ">
+              <strong>${place.name}</strong><br/>
+              ${place.address}<br/>
+              <strong>등록한 사용자:</strong><br/>
+              ${place.usernames
+                ? place.usernames.split(', ').map(name => `👤 ${name}`).join('<br/>')
+                : '❌ 없음'}
+            </div>`,
+          });
+
+          console.log("marker data →", place.name, place.address, place.usernames);
+
+
+          // InfoWindow 마우스 오버/아웃 이벤트 연결
+          window.kakao.maps.event.addListener(marker, 'mouseover', function () {
+            infowindow.open(map, marker);
+          });
+          window.kakao.maps.event.addListener(marker, 'mouseout', function () {
+            infowindow.close();
+          });
+
         });
-      });
+      })
 
     function createMarkerAndHandleDrag(lat, lng) {
       const userPosition = new window.kakao.maps.LatLng(lat, lng);
@@ -122,6 +156,7 @@ const MapContainer = () => {
 
       overlay.setMap(map);
 
+      // ✅ 사용자 마커도 여기서 처리
       if (userId) {
         fetch(`http://localhost:5000/user/${userId}/places`)
           .then(res => res.json())
@@ -369,39 +404,6 @@ const MapContainer = () => {
     }
   };
 
-  function createHoverableMarker(place, map) {
-    const position = new window.kakao.maps.LatLng(place.latitude, place.longitude);
-    const marker = new window.kakao.maps.Marker({ position, map });
-
-    const infowindow = new window.kakao.maps.InfoWindow({
-      content: `<div style="
-      padding: 10px;
-      font-size: 14px;
-      width: 250px;
-      line-height: 1.6;
-      word-break: keep-all;
-    ">
-      <strong>${place.name}</strong><br/>
-      ${place.address}<br/>
-      <strong>등록한 사용자:</strong><br/>
-      ${place.usernames
-          ? place.usernames.split(', ').map(name => `👤 ${name}`).join('<br/>')
-          : '❌ 없음'}
-    </div>`
-    });
-
-    window.kakao.maps.event.addListener(marker, 'mouseover', () => {
-      console.log('🔥 마우스 올라감:', place.name);
-      infowindow.open(map, marker);
-    });
-    window.kakao.maps.event.addListener(marker, 'mouseout', () => {
-      infowindow.close();
-    });
-
-    return marker;
-  }
-
-
   function findNearestPlace(clickedLatLng, places) {
     let minDist = Infinity;
     let nearest = null;
@@ -462,8 +464,8 @@ const MapContainer = () => {
         id="map"
         style={{
           position: "relative",
-          width: "800px",
-          height: "500px",
+          width: "1200px",
+          height: "800px",
           border: "1px solid #ccc",
           borderRadius: "10px",
           marginTop: "20px"

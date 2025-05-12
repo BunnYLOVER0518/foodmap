@@ -175,12 +175,25 @@ def get_user_places(user_id):
 def get_all_places():
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor(dictionary=True)
-    query = "SELECT * FROM Places"
+
+    query = """
+        SELECT
+            name,
+            latitude,
+            longitude,
+            address,
+            category,
+            GROUP_CONCAT(user_id SEPARATOR ', ') AS usernames
+        FROM Places
+        GROUP BY name, latitude, longitude, address, category
+    """
+
     cursor.execute(query)
     places = cursor.fetchall()
     cursor.close()
     conn.close()
     return jsonify(places)
+
 
 @app.route('/delete_place', methods=['DELETE'])
 def delete_place():
