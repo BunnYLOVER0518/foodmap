@@ -67,6 +67,7 @@ CREATE TABLE Review_likes (
     FOREIGN KEY (review_id) REFERENCES Reviews(id)
 );
 
+
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE users;
 SET FOREIGN_KEY_CHECKS = 1;

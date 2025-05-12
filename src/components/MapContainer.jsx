@@ -78,11 +78,8 @@ const MapContainer = () => {
       level: 3,
     });
 
-    const mapTypeControl = new window.kakao.maps.MapTypeControl();
-    map.addControl(mapTypeControl, window.kakao.maps.ControlPosition.TOPRIGHT);
     const zoomControl = new window.kakao.maps.ZoomControl();
     map.addControl(zoomControl, window.kakao.maps.ControlPosition.RIGHT);
-
 
     setMapObj(map);
 
@@ -90,13 +87,25 @@ const MapContainer = () => {
       .then(res => res.json())
       .then(data => {
         data.forEach(place => {
-          createHoverableMarker(place, map);
+          const position = new window.kakao.maps.LatLng(place.latitude, place.longitude);
+          const marker = new window.kakao.maps.Marker({ position, map });
+
+          window.kakao.maps.event.addListener(marker, 'click', () => {
+            setSelectedPlace({
+              place_name: place.name,
+              address_name: place.address,
+              y: place.latitude,
+              x: place.longitude,
+              phone: place.phone,
+              place_url: place.place_url
+            });
+            map.panTo(marker.getPosition());
+          });
         });
       });
 
     function createMarkerAndHandleDrag(lat, lng) {
       const userPosition = new window.kakao.maps.LatLng(lat, lng);
-
       const marker = new window.kakao.maps.Marker({
         position: userPosition,
         draggable: true
@@ -160,7 +169,6 @@ const MapContainer = () => {
       const latlng = mouseEvent.latLng;
       map.panTo(latlng);
 
-      // 로그인 안 된 사용자 제한
       if (!userId) {
         const msgBox = document.createElement("div");
         msgBox.innerText = "로그인 후 이용할 수 있는 기능입니다.";
@@ -181,7 +189,7 @@ const MapContainer = () => {
           msgBox.remove();
         }, 2000);
 
-        return; // 마커 관련 작업 중단
+        return;
       }
 
       const geocoder = new window.kakao.maps.services.Geocoder();
@@ -196,8 +204,6 @@ const MapContainer = () => {
       places.categorySearch('FD6', (data, status) => {
         if (status === window.kakao.maps.services.Status.OK) {
           setRestaurants(data);
-
-          // 🍽 가장 가까운 음식점을 selectedPlace로 설정
           const nearest = findNearestPlace(latlng, data);
           if (nearest) {
             setSelectedPlace({
@@ -219,8 +225,6 @@ const MapContainer = () => {
       places.categorySearch('CE7', (data, status) => {
         if (status === window.kakao.maps.services.Status.OK) {
           setCafes(data);
-
-          // ☕ 음식점 없었을 경우에 대비해 카페에서도 fallback 가능하게 하려면 아래도 사용 가능
           const nearest = findNearestPlace(latlng, data);
           if (!selectedPlace && nearest) {
             setSelectedPlace({
@@ -238,7 +242,6 @@ const MapContainer = () => {
         radius: 300,
         sort: window.kakao.maps.services.SortBy.DISTANCE
       });
-
     });
 
     if (userId) {
@@ -319,28 +322,25 @@ const MapContainer = () => {
 
       const infowindow = new window.kakao.maps.InfoWindow({
         content: `<div style="
-              padding: 10px; 
-              font-size: 14px; 
-              width: 250px;
-              line-height: 1.6;
-              word-break: keep-all;
-            ">
-              <strong>${selectedPlace.place_name}</strong><br/>
-              ${selectedPlace.address_name}<br/>
-              ${selectedPlace.phone || '📞 정보 없음'}<br/>
-              <a href="${selectedPlace.place_url}" target="_blank" rel="noreferrer" style="color: blue;">지도에서 보기</a>
-            </div>`,
+            padding: 10px; 
+            font-size: 14px; 
+            width: 250px;
+            line-height: 1.6;
+            word-break: keep-all;
+          ">
+            <strong>${selectedPlace.place_name}</strong><br/>
+            ${selectedPlace.address_name}<br/>
+            ${selectedPlace.phone || '📞 정보 없음'}<br/>
+            <a href="${selectedPlace.place_url}" target="_blank" rel="noreferrer" style="color: blue;">지도에서 보기</a>
+          </div>`,
         removable: true
       });
 
-
-      infowindow.open(mapObj, marker);
-
+      // ✅ 클릭 시에만 InfoWindow 열기
       window.kakao.maps.event.addListener(marker, 'click', function () {
         infowindow.open(mapObj, marker);
         mapObj.panTo(marker.getPosition());
       });
-
 
       setMarkerObj(marker);
 
@@ -368,39 +368,6 @@ const MapContainer = () => {
         });
     }
   };
-
-  function createHoverableMarker(place, map) {
-    const position = new window.kakao.maps.LatLng(place.latitude, place.longitude);
-    const marker = new window.kakao.maps.Marker({ position, map });
-
-    const infowindow = new window.kakao.maps.InfoWindow({
-      content: `<div style="
-      padding: 10px;
-      font-size: 14px;
-      width: 250px;
-      line-height: 1.6;
-      word-break: keep-all;
-    ">
-      <strong>${place.name}</strong><br/>
-      ${place.address}<br/>
-      <strong>등록한 사용자:</strong><br/>
-      ${place.usernames
-          ? place.usernames.split(', ').map(name => `👤 ${name}`).join('<br/>')
-          : '❌ 없음'}
-    </div>`
-    });
-
-    window.kakao.maps.event.addListener(marker, 'mouseover', () => {
-      console.log('🔥 마우스 올라감:', place.name);
-      infowindow.open(map, marker);
-    });
-    window.kakao.maps.event.addListener(marker, 'mouseout', () => {
-      infowindow.close();
-    });
-
-    return marker;
-  }
-
 
   function findNearestPlace(clickedLatLng, places) {
     let minDist = Infinity;
@@ -439,25 +406,8 @@ const MapContainer = () => {
       });
   };
 
-  const handleZoomIn = () => {
-    if (!mapObj) return;
-    const level = mapObj.getLevel();
-    if (level > 1) {
-      mapObj.setLevel(level - 1);
-    }
-  };
-
-  const handleZoomOut = () => {
-    if (!mapObj) return;
-    const level = mapObj.getLevel();
-    if (level < 14) {
-      mapObj.setLevel(level + 1);
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-      {/* 지도 박스 */}
       <div
         id="map"
         style={{
@@ -469,9 +419,6 @@ const MapContainer = () => {
           marginTop: "20px"
         }}
       >
-
-
-        {/* 내 위치로 이동 버튼 */}
         <button
           onClick={handleMoveToMyLocation}
           style={{
@@ -493,7 +440,6 @@ const MapContainer = () => {
         </button>
       </div>
 
-      {/* 음식점 / 카페 리스트 */}
       {address && (
         <div style={{
           display: 'flex',
@@ -537,7 +483,6 @@ const MapContainer = () => {
         </div>
       )}
 
-      {/* 상세 정보 모달 */}
       {selectedPlace && (
         <div
           style={{
@@ -570,8 +515,6 @@ const MapContainer = () => {
       )}
     </div>
   );
-
 };
-
 
 export default MapContainer;
