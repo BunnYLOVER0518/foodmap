@@ -97,7 +97,8 @@ const MapContainer = () => {
               y: place.latitude,
               x: place.longitude,
               phone: place.phone,
-              place_url: place.place_url
+              place_url: place.place_url,
+              usernames: place.usernames
             });
             map.panTo(marker.getPosition());
           });
@@ -139,6 +140,20 @@ const MapContainer = () => {
             const markers = data.map(place => {
               const position = new window.kakao.maps.LatLng(place.latitude, place.longitude);
               const marker = new window.kakao.maps.Marker({ position, map });
+              window.kakao.maps.event.addListener(marker, 'click', () => {
+
+                setSelectedPlace({
+                  place_name: place.name,
+                  address_name: place.address,
+                  y: place.latitude,
+                  x: place.longitude,
+                  phone: place.phone,
+                  place_url: place.place_url,
+                  usernames: place.usernames
+                });
+
+                map.panTo(marker.getPosition());
+              });
               return { name: place.name, marker };
             });
             setMyMarkerObjects(markers);
@@ -310,33 +325,33 @@ const MapContainer = () => {
 
 
   const handleAddMarker = () => {
+    const user_id = localStorage.getItem("user_id");
+    if (!user_id) {
+      alert("로그인 후에 마커를 추가할 수 있습니다.");
+      return;
+    }
+
     if (selectedPlace && mapObj) {
       const latlng = new window.kakao.maps.LatLng(selectedPlace.y, selectedPlace.x);
       const marker = new window.kakao.maps.Marker({
         position: latlng,
         map: mapObj,
       });
+
       mapObj.setCenter(latlng);
 
       setMyMarkerObjects(prev => [...prev, { name: selectedPlace.place_name, marker }]);
 
       const infowindow = new window.kakao.maps.InfoWindow({
-        content: `<div style="
-            padding: 10px; 
-            font-size: 14px; 
-            width: 250px;
-            line-height: 1.6;
-            word-break: keep-all;
-          ">
-            <strong>${selectedPlace.place_name}</strong><br/>
-            ${selectedPlace.address_name}<br/>
-            ${selectedPlace.phone || '📞 정보 없음'}<br/>
-            <a href="${selectedPlace.place_url}" target="_blank" rel="noreferrer" style="color: blue;">지도에서 보기</a>
-          </div>`,
+        content: `<div style="padding: 10px; font-size: 14px; width: 250px; line-height: 1.6; word-break: keep-all;">
+        <strong>${selectedPlace.place_name}</strong><br/>
+        ${selectedPlace.address_name}<br/>
+        ${selectedPlace.phone || '📞 정보 없음'}<br/>
+        <a href="${selectedPlace.place_url}" target="_blank" rel="noreferrer" style="color: blue;">지도에서 보기</a>
+      </div>`,
         removable: true
       });
 
-      // ✅ 클릭 시에만 InfoWindow 열기
       window.kakao.maps.event.addListener(marker, 'click', function () {
         infowindow.open(mapObj, marker);
         mapObj.panTo(marker.getPosition());
@@ -344,8 +359,6 @@ const MapContainer = () => {
 
       setMarkerObj(marker);
 
-      // 🔥 DB 저장
-      const user_id = localStorage.getItem("user_id");
       fetch("http://localhost:5000/add_place", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -368,6 +381,7 @@ const MapContainer = () => {
         });
     }
   };
+
 
   function findNearestPlace(clickedLatLng, places) {
     let minDist = Infinity;
@@ -501,7 +515,21 @@ const MapContainer = () => {
           <h3>{selectedPlace.place_name}</h3>
           <p>📍 {selectedPlace.address_name}</p>
           <p>📞 {selectedPlace.phone || '정보 없음'}</p>
-          <a href={selectedPlace.place_url} target="_blank" rel="noreferrer">지도에서 보기</a>
+          {selectedPlace.usernames && (
+            <p>👥 등록한 사용자: {selectedPlace.usernames}</p>
+          )}
+
+          <a
+            href={
+              selectedPlace.place_url
+                ? selectedPlace.place_url
+                : `https://map.kakao.com/link/search/${encodeURIComponent(selectedPlace.place_name)}`
+            }
+            target="_blank"
+            rel="noreferrer"
+          >
+            지도에서 보기
+          </a>
           <br />
           <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
             <button onClick={() => setSelectedPlace(null)}>닫기</button>
