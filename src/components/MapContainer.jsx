@@ -49,14 +49,12 @@ const MapContainer = () => {
       .then(() => {
         console.log("✅ DB 삭제 완료");
 
-        // 1. 내 마커 상태 갱신
         setMyMarkers(prev => {
           const updated = prev.filter(m => m.name !== selectedPlace.place_name);
           console.log("🧹 마커 상태에서 제거됨:", updated);
           return updated;
         });
 
-        // 2. 지도에서 마커 제거
         setAllMarkers(prev => {
           const isCloseEnough = (a, b) => Math.abs(a - b) < 0.00001;
 
@@ -69,22 +67,16 @@ const MapContainer = () => {
             if (match) {
               console.log("🗑 마커 삭제 대상:", m);
               m.marker.setMap(null);
-              console.log("🧪 삭제 후 getMap:", m.marker.getMap()); // ← 이게 null이어야 진짜 삭제됨
+              console.log("🧪 삭제 후 getMap:", m.marker.getMap());
             }
-
             return !match;
           });
-
           return updated;
         });
 
-
-        // 3. 선택된 장소 초기화 → 버튼도 자동으로 다시 "마커 추가"로 변경됨
         setSelectedPlace(null);
       });
   }
-
-
 
   const user_id = localStorage.getItem("user_id");
   const isMyMarker = allMarkers.some(marker =>
@@ -109,7 +101,6 @@ const MapContainer = () => {
 
     const isCloseEnough = (a, b) => Math.abs(a - b) < 0.00001;
 
-    // ✅ 1. 로그인된 사용자 마커 먼저 불러오기
     fetch(`http://localhost:5000/user/${userId}/places`)
       .then(res => res.json())
       .then(userPlaces => {
@@ -126,6 +117,8 @@ const MapContainer = () => {
               phone: place.phone,
               place_url: place.place_url,
               usernames: place.usernames
+                ? place.usernames.split(', ').filter(Boolean)
+                : [userId]
             });
             map.panTo(marker.getPosition());
           });
@@ -134,15 +127,16 @@ const MapContainer = () => {
             name: place.name,
             lat: parseFloat(place.latitude),
             lng: parseFloat(place.longitude),
-            user_id: userId,
-            marker: marker
+            user_id: place.user_id,
+            marker: marker,
+            category: place.category,
+            phone: place.phone
           };
         });
 
         setAllMarkers(myMarkers);
         setMyMarkers(userPlaces);
 
-        // ✅ 2. 모든 사용자 마커 불러오기 (내 마커 중복 제거)
         fetch("http://localhost:5000/places")
           .then(res => res.json())
           .then(allPlaces => {
@@ -168,14 +162,27 @@ const MapContainer = () => {
                   phone: place.phone,
                   place_url: place.place_url,
                   usernames: place.usernames
+                    ? place.usernames.split(', ').filter(Boolean)
+                    : [userId]
                 });
                 map.panTo(marker.getPosition());
               });
+
+              const markerObj = {
+                name: place.name,
+                lat: parseFloat(place.latitude),
+                lng: parseFloat(place.longitude),
+                user_id: place.user_id,
+                marker: marker,
+                category: place.category,
+                phone: place.phone
+              };
+
+              setAllMarkers(prev => [...prev, markerObj]);
             });
           });
       });
 
-    // ✅ 3. 지도 클릭 시 음식점/카페 탐색
     window.kakao.maps.event.addListener(map, 'click', function (mouseEvent) {
       const latlng = mouseEvent.latLng;
       map.panTo(latlng);
@@ -255,7 +262,6 @@ const MapContainer = () => {
       });
     });
 
-    // ✅ 4. 내 위치 마커 + 오버레이
     fetch(`http://localhost:5000/user/${userId}/location`)
       .then(res => res.json())
       .then(data => {
@@ -307,9 +313,8 @@ const MapContainer = () => {
     setSelectedPlace(place);
 
     if (mapObj) {
-      // 기존 마커와 infowindow 제거
       if (tempMarker) tempMarker.setMap(null);
-      if (tempInfoWindow) tempInfoWindow.close(); // 👈 infowindow도 제거
+      if (tempInfoWindow) tempInfoWindow.close();
 
       const latlng = new window.kakao.maps.LatLng(place.y, place.x);
       const marker = new window.kakao.maps.Marker({
@@ -324,11 +329,10 @@ const MapContainer = () => {
       infowindow.open(mapObj, marker);
 
       setTempMarker(marker);
-      setTempInfoWindow(infowindow); // 👈 새 infowindow 저장
+      setTempInfoWindow(infowindow);
       mapObj.setCenter(latlng);
     }
   };
-
 
   const handleAddMarker = () => {
     const user_id = localStorage.getItem("user_id");
@@ -363,6 +367,15 @@ const MapContainer = () => {
 
       setMarkerObj(marker);
 
+      const existing = allMarkers.find(m =>
+        m.name === selectedPlace.place_name &&
+        Math.abs(m.lat - parseFloat(selectedPlace.y)) < 0.00001 &&
+        Math.abs(m.lng - parseFloat(selectedPlace.x)) < 0.00001
+      );
+
+      const category = selectedPlace.category_group_name || existing?.category || "미분류";
+      const phone = selectedPlace.phone || existing?.phone || "";
+
       fetch("http://localhost:5000/add_place", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -371,8 +384,8 @@ const MapContainer = () => {
           latitude: selectedPlace.y,
           longitude: selectedPlace.x,
           address: selectedPlace.address_name,
-          category: selectedPlace.category_group_name || "미분류",
-          phone: selectedPlace.phone || "",
+          category: category,
+          phone: phone,
           user_id: user_id
         })
       })
@@ -387,7 +400,9 @@ const MapContainer = () => {
               lat: parseFloat(selectedPlace.y),
               lng: parseFloat(selectedPlace.x),
               user_id: user_id,
-              marker: marker
+              marker: marker,
+              category: category,
+              phone: phone
             }
           ]);
 
@@ -403,7 +418,6 @@ const MapContainer = () => {
         });
     }
   };
-
 
   function findNearestPlace(clickedLatLng, places) {
     let minDist = Infinity;

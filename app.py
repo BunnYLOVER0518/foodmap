@@ -162,13 +162,13 @@ def add_place():
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor()
     query = "INSERT INTO Places (name, latitude, longitude, address, category, phone, user_id) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-    cursor.execute(query, (name, latitude, longitude, address, category, phone, user_id))
+    cursor.execute(query, (name, latitude, longitude,
+                   address, category, phone, user_id))
     conn.commit()
     cursor.close()
     conn.close()
 
     return jsonify({"message": "장소 저장 완료"})
-
 
 
 @app.route('/user/<user_id>/places', methods=['GET'])
@@ -190,14 +190,16 @@ def get_all_places():
 
     query = """
         SELECT
-            name,
-            latitude,
-            longitude,
-            address,
-            category,
-            GROUP_CONCAT(user_id SEPARATOR ', ') AS usernames
-        FROM Places
-        GROUP BY name, latitude, longitude, address, category
+    name,
+    latitude,
+    longitude,
+    address,
+    category,
+    phone,  
+    GROUP_CONCAT(user_id SEPARATOR ', ') AS usernames
+FROM Places
+GROUP BY name, latitude, longitude, address, category, phone
+
     """
 
     cursor.execute(query)
