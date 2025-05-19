@@ -17,6 +17,7 @@ DB_CONFIG = {
     "database": "foodmap"
 }
 
+
 @app.route('/signup', methods=['POST'])
 def signup():
     id = request.form['id']
@@ -41,9 +42,11 @@ def signup():
 
     return jsonify({"message": "회원가입 완료"})
 
+
 @app.route('/images/<filename>')
 def serve_image(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
+
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -64,6 +67,7 @@ def login():
     else:
         return jsonify({"success": False})
 
+
 @app.route('/user/<user_id>', methods=['GET'])
 def get_user_info(user_id):
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -74,6 +78,7 @@ def get_user_info(user_id):
     cursor.close()
     conn.close()
     return jsonify(user)
+
 
 @app.route('/user/<user_id>', methods=['PUT'])
 def update_user(user_id):
@@ -109,6 +114,7 @@ def update_user(user_id):
     conn.close()
     return jsonify({"message": "수정 완료"})
 
+
 @app.route('/user/<user_id>/location', methods=['PUT'])
 def update_user_location(user_id):
     data = request.get_json()
@@ -125,6 +131,7 @@ def update_user_location(user_id):
 
     return jsonify({"message": "위치 저장 완료"})
 
+
 @app.route('/user/<user_id>/location', methods=['GET'])
 def get_user_location(user_id):
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -140,6 +147,7 @@ def get_user_location(user_id):
     else:
         return jsonify({"latitude": None, "longitude": None})
 
+
 @app.route('/add_place', methods=['POST'])
 def add_place():
     data = request.get_json()
@@ -148,17 +156,20 @@ def add_place():
     longitude = data.get('longitude')
     address = data.get('address')
     category = data.get('category')
+    phone = data.get('phone')  # ✅ 추가
     user_id = data.get('user_id')
 
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor()
-    query = "INSERT INTO Places (name, latitude, longitude, address, category, user_id) VALUES (%s, %s, %s, %s, %s, %s)"
-    cursor.execute(query, (name, latitude, longitude, address, category, user_id))
+    query = "INSERT INTO Places (name, latitude, longitude, address, category, phone, user_id) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+    cursor.execute(query, (name, latitude, longitude, address, category, phone, user_id))
     conn.commit()
     cursor.close()
     conn.close()
 
     return jsonify({"message": "장소 저장 완료"})
+
+
 
 @app.route('/user/<user_id>/places', methods=['GET'])
 def get_user_places(user_id):
@@ -170,6 +181,7 @@ def get_user_places(user_id):
     cursor.close()
     conn.close()
     return jsonify(places)
+
 
 @app.route('/places', methods=['GET'])
 def get_all_places():
@@ -210,6 +222,7 @@ def delete_place():
     conn.close()
 
     return jsonify({"message": "장소 삭제 완료"})
+
 
 if __name__ == '__main__':
     app.run(debug=True)

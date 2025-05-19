@@ -86,216 +86,221 @@ const MapContainer = () => {
 
 
 
-
-  const isMyMarker = myMarkers.some(marker => marker.name === selectedPlace?.place_name);
+  const user_id = localStorage.getItem("user_id");
+  const isMyMarker = allMarkers.some(marker =>
+    marker.name === selectedPlace?.place_name &&
+    marker.user_id === user_id
+  );
 
   function drawMap() {
-  const container = document.getElementById("map");
-  if (!container) return;
+    const container = document.getElementById("map");
+    if (!container) return;
 
-  const userId = localStorage.getItem("user_id");
-  const defaultCenter = new window.kakao.maps.LatLng(37.557466, 126.924363);
-  const map = new window.kakao.maps.Map(container, {
-    center: defaultCenter,
-    level: 3,
-  });
+    const userId = localStorage.getItem("user_id");
+    const defaultCenter = new window.kakao.maps.LatLng(37.557466, 126.924363);
+    const map = new window.kakao.maps.Map(container, {
+      center: defaultCenter,
+      level: 3,
+    });
 
-  const zoomControl = new window.kakao.maps.ZoomControl();
-  map.addControl(zoomControl, window.kakao.maps.ControlPosition.RIGHT);
-  setMapObj(map);
+    const zoomControl = new window.kakao.maps.ZoomControl();
+    map.addControl(zoomControl, window.kakao.maps.ControlPosition.RIGHT);
+    setMapObj(map);
 
-  const isCloseEnough = (a, b) => Math.abs(a - b) < 0.00001;
+    const isCloseEnough = (a, b) => Math.abs(a - b) < 0.00001;
 
-  // ✅ 1. 로그인된 사용자 마커 먼저 불러오기
-  fetch(`http://localhost:5000/user/${userId}/places`)
-    .then(res => res.json())
-    .then(userPlaces => {
-      const myMarkers = userPlaces.map(place => {
-        const pos = new window.kakao.maps.LatLng(place.latitude, place.longitude);
-        const marker = new window.kakao.maps.Marker({ position: pos, map });
+    // ✅ 1. 로그인된 사용자 마커 먼저 불러오기
+    fetch(`http://localhost:5000/user/${userId}/places`)
+      .then(res => res.json())
+      .then(userPlaces => {
+        const myMarkers = userPlaces.map(place => {
+          const pos = new window.kakao.maps.LatLng(place.latitude, place.longitude);
+          const marker = new window.kakao.maps.Marker({ position: pos, map });
 
-        window.kakao.maps.event.addListener(marker, 'click', () => {
-          setSelectedPlace({
-            place_name: place.name,
-            address_name: place.address,
-            y: place.latitude,
-            x: place.longitude,
-            phone: place.phone,
-            place_url: place.place_url,
-            usernames: place.usernames
+          window.kakao.maps.event.addListener(marker, 'click', () => {
+            setSelectedPlace({
+              place_name: place.name,
+              address_name: place.address,
+              y: place.latitude,
+              x: place.longitude,
+              phone: place.phone,
+              place_url: place.place_url,
+              usernames: place.usernames
+            });
+            map.panTo(marker.getPosition());
           });
-          map.panTo(marker.getPosition());
+
+          return {
+            name: place.name,
+            lat: parseFloat(place.latitude),
+            lng: parseFloat(place.longitude),
+            user_id: userId,
+            marker: marker
+          };
         });
 
-        return {
-          name: place.name,
-          lat: parseFloat(place.latitude),
-          lng: parseFloat(place.longitude),
-          user_id: userId,
-          marker: marker
-        };
-      });
+        setAllMarkers(myMarkers);
+        setMyMarkers(userPlaces);
 
-      setAllMarkers(myMarkers);
-      setMyMarkers(userPlaces);
+        // ✅ 2. 모든 사용자 마커 불러오기 (내 마커 중복 제거)
+        fetch("http://localhost:5000/places")
+          .then(res => res.json())
+          .then(allPlaces => {
+            allPlaces.forEach(place => {
+              if (place.user_id === userId) return;
 
-      // ✅ 2. 모든 사용자 마커 불러오기 (내 마커 중복 제거)
-      fetch("http://localhost:5000/places")
-        .then(res => res.json())
-        .then(allPlaces => {
-          allPlaces.forEach(place => {
-            if (place.user_id === userId) return;
+              const alreadyExists = myMarkers.some(m =>
+                m.name === place.name &&
+                isCloseEnough(m.lat, parseFloat(place.latitude)) &&
+                isCloseEnough(m.lng, parseFloat(place.longitude))
+              );
+              if (alreadyExists) return;
 
-            const alreadyExists = myMarkers.some(m =>
-              m.name === place.name &&
-              isCloseEnough(m.lat, parseFloat(place.latitude)) &&
-              isCloseEnough(m.lng, parseFloat(place.longitude))
-            );
-            if (alreadyExists) return;
+              const pos = new window.kakao.maps.LatLng(place.latitude, place.longitude);
+              const marker = new window.kakao.maps.Marker({ position: pos, map });
 
-            const pos = new window.kakao.maps.LatLng(place.latitude, place.longitude);
-            const marker = new window.kakao.maps.Marker({ position: pos, map });
-
-            window.kakao.maps.event.addListener(marker, 'click', () => {
-              setSelectedPlace({
-                place_name: place.name,
-                address_name: place.address,
-                y: place.latitude,
-                x: place.longitude,
-                phone: place.phone,
-                place_url: place.place_url,
-                usernames: place.usernames
+              window.kakao.maps.event.addListener(marker, 'click', () => {
+                setSelectedPlace({
+                  place_name: place.name,
+                  address_name: place.address,
+                  y: place.latitude,
+                  x: place.longitude,
+                  phone: place.phone,
+                  place_url: place.place_url,
+                  usernames: place.usernames
+                });
+                map.panTo(marker.getPosition());
               });
-              map.panTo(marker.getPosition());
             });
           });
-        });
-    });
-
-  // ✅ 3. 지도 클릭 시 음식점/카페 탐색
-  window.kakao.maps.event.addListener(map, 'click', function (mouseEvent) {
-    const latlng = mouseEvent.latLng;
-    map.panTo(latlng);
-
-    if (!userId) {
-      const msgBox = document.createElement("div");
-      msgBox.innerText = "로그인 후 이용할 수 있는 기능입니다.";
-      Object.assign(msgBox.style, {
-        position: "fixed",
-        top: "20px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        background: "#333",
-        color: "#fff",
-        padding: "10px 20px",
-        borderRadius: "8px",
-        zIndex: 9999,
-        fontSize: "14px",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.3)"
       });
-      document.body.appendChild(msgBox);
-      setTimeout(() => msgBox.remove(), 2000);
-      return;
-    }
 
-    const geocoder = new window.kakao.maps.services.Geocoder();
-    const places = new window.kakao.maps.services.Places();
+    // ✅ 3. 지도 클릭 시 음식점/카페 탐색
+    window.kakao.maps.event.addListener(map, 'click', function (mouseEvent) {
+      const latlng = mouseEvent.latLng;
+      map.panTo(latlng);
 
-    geocoder.coord2Address(latlng.getLng(), latlng.getLat(), function (result, status) {
-      if (status === window.kakao.maps.services.Status.OK) {
-        setAddress(result[0].address.address_name);
-      }
-    });
-
-    places.categorySearch('FD6', (data, status) => {
-      if (status === window.kakao.maps.services.Status.OK) {
-        setRestaurants(data);
-        const nearest = findNearestPlace(latlng, data);
-        if (nearest) {
-          setSelectedPlace({
-            place_name: nearest.place_name,
-            address_name: nearest.address_name,
-            y: nearest.y,
-            x: nearest.x,
-            phone: nearest.phone,
-            place_url: nearest.place_url
-          });
-        }
-      }
-    }, {
-      location: latlng,
-      radius: 300,
-      sort: window.kakao.maps.services.SortBy.DISTANCE
-    });
-
-    places.categorySearch('CE7', (data, status) => {
-      if (status === window.kakao.maps.services.Status.OK) {
-        setCafes(data);
-        const nearest = findNearestPlace(latlng, data);
-        if (!selectedPlace && nearest) {
-          setSelectedPlace({
-            place_name: nearest.place_name,
-            address_name: nearest.address_name,
-            y: nearest.y,
-            x: nearest.x,
-            phone: nearest.phone,
-            place_url: nearest.place_url
-          });
-        }
-      }
-    }, {
-      location: latlng,
-      radius: 300,
-      sort: window.kakao.maps.services.SortBy.DISTANCE
-    });
-  });
-
-  // ✅ 4. 내 위치 마커 + 오버레이
-  fetch(`http://localhost:5000/user/${userId}/location`)
-    .then(res => res.json())
-    .then(data => {
-      const lat = data.latitude ?? 37.55406383694701;
-      const lng = data.longitude ?? 126.92058772873095;
-      createMarkerAndHandleDrag(lat, lng);
-    })
-    .catch(() => {
-      createMarkerAndHandleDrag(37.55406383694701, 126.92058772873095);
-    });
-
-  function createMarkerAndHandleDrag(lat, lng) {
-    const userPosition = new window.kakao.maps.LatLng(lat, lng);
-    const marker = new window.kakao.maps.Marker({
-      position: userPosition,
-      draggable: true,
-      map: map
-    });
-
-    const overlay = new window.kakao.maps.CustomOverlay({
-      position: userPosition,
-      content: `<div style="background:white;border:1px solid #ccc;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:bold;">내 위치</div>`,
-      yAnchor: 3
-    });
-
-    overlay.setMap(map);
-    map.setCenter(userPosition);
-
-    window.kakao.maps.event.addListener(marker, 'dragend', function () {
-      const pos = marker.getPosition();
-      overlay.setPosition(pos);
-
-      if (userId) {
-        fetch(`http://localhost:5000/user/${userId}/location`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            latitude: pos.getLat(),
-            longitude: pos.getLng()
-          })
+      if (!userId) {
+        const msgBox = document.createElement("div");
+        msgBox.innerText = "로그인 후 이용할 수 있는 기능입니다.";
+        Object.assign(msgBox.style, {
+          position: "fixed",
+          top: "20px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "#333",
+          color: "#fff",
+          padding: "10px 20px",
+          borderRadius: "8px",
+          zIndex: 9999,
+          fontSize: "14px",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.3)"
         });
+        document.body.appendChild(msgBox);
+        setTimeout(() => msgBox.remove(), 2000);
+        return;
       }
+
+      const geocoder = new window.kakao.maps.services.Geocoder();
+      const places = new window.kakao.maps.services.Places();
+
+      geocoder.coord2Address(latlng.getLng(), latlng.getLat(), function (result, status) {
+        if (status === window.kakao.maps.services.Status.OK) {
+          setAddress(result[0].address.address_name);
+        }
+      });
+
+      places.categorySearch('FD6', (data, status) => {
+        if (status === window.kakao.maps.services.Status.OK) {
+          setRestaurants(data);
+          const nearest = findNearestPlace(latlng, data);
+          if (nearest) {
+            setSelectedPlace({
+              place_name: nearest.place_name,
+              address_name: nearest.address_name,
+              y: nearest.y,
+              x: nearest.x,
+              phone: nearest.phone,
+              place_url: nearest.place_url,
+              category_group_name: nearest.category_group_name
+            });
+          }
+        }
+      }, {
+        location: latlng,
+        radius: 300,
+        sort: window.kakao.maps.services.SortBy.DISTANCE
+      });
+
+      places.categorySearch('CE7', (data, status) => {
+        if (status === window.kakao.maps.services.Status.OK) {
+          setCafes(data);
+          const nearest = findNearestPlace(latlng, data);
+          if (!selectedPlace && nearest) {
+            setSelectedPlace({
+              place_name: nearest.place_name,
+              address_name: nearest.address_name,
+              y: nearest.y,
+              x: nearest.x,
+              phone: nearest.phone,
+              place_url: nearest.place_url,
+              category_group_name: nearest.category_group_name
+            });
+          }
+        }
+      }, {
+        location: latlng,
+        radius: 300,
+        sort: window.kakao.maps.services.SortBy.DISTANCE
+      });
     });
+
+    // ✅ 4. 내 위치 마커 + 오버레이
+    fetch(`http://localhost:5000/user/${userId}/location`)
+      .then(res => res.json())
+      .then(data => {
+        const lat = data.latitude ?? 37.55406383694701;
+        const lng = data.longitude ?? 126.92058772873095;
+        createMarkerAndHandleDrag(lat, lng);
+      })
+      .catch(() => {
+        createMarkerAndHandleDrag(37.55406383694701, 126.92058772873095);
+      });
+
+    function createMarkerAndHandleDrag(lat, lng) {
+      const userPosition = new window.kakao.maps.LatLng(lat, lng);
+      const marker = new window.kakao.maps.Marker({
+        position: userPosition,
+        draggable: true,
+        map: map
+      });
+
+      const overlay = new window.kakao.maps.CustomOverlay({
+        position: userPosition,
+        content: `<div style="background:white;border:1px solid #ccc;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:bold;">내 위치</div>`,
+        yAnchor: 3
+      });
+
+      overlay.setMap(map);
+      map.setCenter(userPosition);
+
+      window.kakao.maps.event.addListener(marker, 'dragend', function () {
+        const pos = marker.getPosition();
+        overlay.setPosition(pos);
+
+        if (userId) {
+          fetch(`http://localhost:5000/user/${userId}/location`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              latitude: pos.getLat(),
+              longitude: pos.getLng()
+            })
+          });
+        }
+      });
+    }
   }
-}
 
 
   const handlePlaceClick = (place) => {
@@ -356,7 +361,6 @@ const MapContainer = () => {
         mapObj.panTo(marker.getPosition());
       });
 
-
       setMarkerObj(marker);
 
       fetch("http://localhost:5000/add_place", {
@@ -368,12 +372,31 @@ const MapContainer = () => {
           longitude: selectedPlace.x,
           address: selectedPlace.address_name,
           category: selectedPlace.category_group_name || "미분류",
+          phone: selectedPlace.phone || "",
           user_id: user_id
         })
       })
         .then(res => res.json())
         .then(data => {
           console.log("✅ DB 저장 완료:", data);
+
+          setAllMarkers(prev => [
+            ...prev,
+            {
+              name: selectedPlace.place_name,
+              lat: parseFloat(selectedPlace.y),
+              lng: parseFloat(selectedPlace.x),
+              user_id: user_id,
+              marker: marker
+            }
+          ]);
+
+          setSelectedPlace(prev => ({
+            ...prev,
+            usernames: prev.usernames
+              ? `${prev.usernames}, ${user_id}`
+              : user_id
+          }));
         })
         .catch(err => {
           console.error("❌ DB 저장 실패:", err);
