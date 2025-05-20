@@ -175,12 +175,35 @@ def add_place():
 def get_user_places(user_id):
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor(dictionary=True)
-    query = "SELECT * FROM Places WHERE user_id = %s"
+
+    query = """
+        SELECT 
+            p1.name,
+            p1.latitude,
+            p1.longitude,
+            p1.address,
+            p1.category,
+            p1.phone,
+            p1.user_id,
+            (
+                SELECT GROUP_CONCAT(u.name SEPARATOR ', ')
+                FROM Places p2
+                JOIN Users u ON p2.user_id = u.id
+                WHERE p2.name = p1.name
+                  AND p2.latitude = p1.latitude
+                  AND p2.longitude = p1.longitude
+            ) AS usernames
+        FROM Places p1
+        WHERE p1.user_id = %s
+    """
+
     cursor.execute(query, (user_id,))
     places = cursor.fetchall()
     cursor.close()
     conn.close()
     return jsonify(places)
+
+
 
 
 @app.route('/places', methods=['GET'])
@@ -190,16 +213,16 @@ def get_all_places():
 
     query = """
         SELECT
-    name,
-    latitude,
-    longitude,
-    address,
-    category,
-    phone,  
-    GROUP_CONCAT(user_id SEPARATOR ', ') AS usernames
-FROM Places
-GROUP BY name, latitude, longitude, address, category, phone
-
+            p.name,
+            p.latitude,
+            p.longitude,
+            p.address,
+            p.category,
+            p.phone,
+            GROUP_CONCAT(u.name SEPARATOR ', ') AS usernames
+        FROM Places p
+        JOIN Users u ON p.user_id = u.id
+        GROUP BY p.name, p.latitude, p.longitude, p.address, p.category, p.phone
     """
 
     cursor.execute(query)
@@ -207,6 +230,7 @@ GROUP BY name, latitude, longitude, address, category, phone
     cursor.close()
     conn.close()
     return jsonify(places)
+
 
 
 @app.route('/delete_place', methods=['DELETE'])

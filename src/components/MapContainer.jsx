@@ -109,19 +109,33 @@ const MapContainer = () => {
           const marker = new window.kakao.maps.Marker({ position: pos, map });
 
           window.kakao.maps.event.addListener(marker, 'click', () => {
-            setSelectedPlace({
-              place_name: place.name,
-              address_name: place.address,
-              y: place.latitude,
-              x: place.longitude,
-              phone: place.phone,
-              place_url: place.place_url,
-              usernames: place.usernames
-                ? place.usernames.split(', ').filter(Boolean)
-                : [userId]
-            });
-            map.panTo(marker.getPosition());
+            fetch("http://localhost:5000/places")
+              .then(res => res.json())
+              .then(allPlaces => {
+                const matched = allPlaces.find(p =>
+                  p.name === place.name &&
+                  Math.abs(parseFloat(p.latitude) - parseFloat(place.latitude)) < 0.00001 &&
+                  Math.abs(parseFloat(p.longitude) - parseFloat(place.longitude)) < 0.00001
+                );
+
+                if (matched) {
+                  console.log("🧪 최신 usernames:", matched.usernames);
+                  setSelectedPlace({
+                    place_name: matched.name,
+                    address_name: matched.address,
+                    y: matched.latitude,
+                    x: matched.longitude,
+                    phone: matched.phone,
+                    place_url: matched.place_url,
+                    usernames: matched.usernames
+                      ? matched.usernames.split(',').map(n => n.trim())
+                      : []
+                  });
+                  map.panTo(marker.getPosition());
+                }
+              });
           });
+
 
           return {
             name: place.name,
@@ -154,19 +168,33 @@ const MapContainer = () => {
               const marker = new window.kakao.maps.Marker({ position: pos, map });
 
               window.kakao.maps.event.addListener(marker, 'click', () => {
-                setSelectedPlace({
-                  place_name: place.name,
-                  address_name: place.address,
-                  y: place.latitude,
-                  x: place.longitude,
-                  phone: place.phone,
-                  place_url: place.place_url,
-                  usernames: place.usernames
-                    ? place.usernames.split(', ').filter(Boolean)
-                    : [userId]
-                });
-                map.panTo(marker.getPosition());
+                fetch("http://localhost:5000/places")
+                  .then(res => res.json())
+                  .then(allPlaces => {
+                    const matched = allPlaces.find(p =>
+                      p.name === place.name &&
+                      Math.abs(parseFloat(p.latitude) - parseFloat(place.latitude)) < 0.00001 &&
+                      Math.abs(parseFloat(p.longitude) - parseFloat(place.longitude)) < 0.00001
+                    );
+
+                    if (matched) {
+                      console.log("🧪 최신 usernames:", matched.usernames);
+                      setSelectedPlace({
+                        place_name: matched.name,
+                        address_name: matched.address,
+                        y: matched.latitude,
+                        x: matched.longitude,
+                        phone: matched.phone,
+                        place_url: matched.place_url,
+                        usernames: matched.usernames
+                          ? matched.usernames.split(',').map(n => n.trim())
+                          : []
+                      });
+                      map.panTo(marker.getPosition());
+                    }
+                  });
               });
+
 
               const markerObj = {
                 name: place.name,
@@ -336,6 +364,7 @@ const MapContainer = () => {
 
   const handleAddMarker = () => {
     const user_id = localStorage.getItem("user_id");
+    const userName = localStorage.getItem("name");
     if (!user_id) {
       alert("로그인 후에 마커를 추가할 수 있습니다.");
       return;
@@ -393,6 +422,8 @@ const MapContainer = () => {
         .then(data => {
           console.log("✅ DB 저장 완료:", data);
 
+
+
           setAllMarkers(prev => [
             ...prev,
             {
@@ -405,13 +436,17 @@ const MapContainer = () => {
               phone: phone
             }
           ]);
+          setSelectedPlace(prev => {
+            const updated = {
+              ...prev,
+              usernames: Array.isArray(prev.usernames)
+                ? [...prev.usernames, userName]
+                : [userName]
+            };
+            console.log("🧪 업데이트된 selectedPlace.usernames:", updated.usernames);
+            return updated;
+          });
 
-          setSelectedPlace(prev => ({
-            ...prev,
-            usernames: prev.usernames
-              ? `${prev.usernames}, ${user_id}`
-              : user_id
-          }));
         })
         .catch(err => {
           console.error("❌ DB 저장 실패:", err);
@@ -552,7 +587,9 @@ const MapContainer = () => {
           <p>📍 {selectedPlace.address_name}</p>
           <p>📞 {selectedPlace.phone || '정보 없음'}</p>
           {selectedPlace.usernames && (
-            <p>👥 등록한 사용자: {selectedPlace.usernames}</p>
+            <p>👥 등록한 사용자: {Array.isArray(selectedPlace.usernames)
+              ? selectedPlace.usernames.join(', ')
+              : selectedPlace.usernames}</p>
           )}
 
           <a

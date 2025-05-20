@@ -67,10 +67,17 @@ CREATE TABLE Review_likes (
     FOREIGN KEY (review_id) REFERENCES Reviews(id)
 );
 
-
 SET FOREIGN_KEY_CHECKS = 0;
-TRUNCATE TABLE users;
+TRUNCATE TABLE places;
 SET FOREIGN_KEY_CHECKS = 1;
+
+ALTER TABLE Places ADD phone VARCHAR(100);
 
 select * from users;
 select * from places;
+
+
+
+
+
+
