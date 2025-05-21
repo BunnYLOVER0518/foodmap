@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 const MapContainer = () => {
   const [address, setAddress] = useState("");
@@ -12,6 +12,11 @@ const MapContainer = () => {
   const [tempMarker, setTempMarker] = useState(null);
   const [tempInfoWindow, setTempInfoWindow] = useState(null);
   const [allMarkers, setAllMarkers] = useState([]);
+  const tempMarkerRef = useRef(null);
+  const fadeTimerRef = useRef(null);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+
 
   useEffect(() => {
     const scriptId = "kakao-map-script";
@@ -49,34 +54,73 @@ const MapContainer = () => {
       .then(() => {
         console.log("✅ DB 삭제 완료");
 
+        // 내 마커 목록에서 제거
         setMyMarkers(prev => {
           const updated = prev.filter(m => m.name !== selectedPlace.place_name);
           console.log("🧹 마커 상태에서 제거됨:", updated);
           return updated;
         });
 
-        setAllMarkers(prev => {
-          const isCloseEnough = (a, b) => Math.abs(a - b) < 0.00001;
+        // 🔄 최신 usernames 확인
+        fetch("http://localhost:5000/places")
+          .then(res => res.json())
+          .then(allPlaces => {
+            const matched = allPlaces.find(p =>
+              p.name === selectedPlace.place_name &&
+              Math.abs(parseFloat(p.latitude) - parseFloat(selectedPlace.y)) < 0.00001 &&
+              Math.abs(parseFloat(p.longitude) - parseFloat(selectedPlace.x)) < 0.00001
+            );
 
-          const updated = prev.filter(m => {
-            const match =
-              m.name === selectedPlace.place_name &&
-              isCloseEnough(m.lat, parseFloat(selectedPlace.y)) &&
-              isCloseEnough(m.lng, parseFloat(selectedPlace.x));
+            const usernamesLeft = matched?.usernames?.split(',').map(n => n.trim()).filter(Boolean) ?? [];
 
-            if (match) {
-              console.log("🗑 마커 삭제 대상:", m);
-              m.marker.setMap(null);
-              console.log("🧪 삭제 후 getMap:", m.marker.getMap());
+            if (usernamesLeft.length === 0) {
+              // 아무도 없으면 마커 완전 삭제
+              setAllMarkers(prev => {
+                const isCloseEnough = (a, b) => Math.abs(a - b) < 0.00001;
+
+                const updated = prev.filter(m => {
+                  const match =
+                    m.name === selectedPlace.place_name &&
+                    isCloseEnough(m.lat, parseFloat(selectedPlace.y)) &&
+                    isCloseEnough(m.lng, parseFloat(selectedPlace.x));
+
+                  if (match) {
+                    console.log("🗑 마커 삭제 대상:", m);
+                    m.marker.setMap(null);
+                    console.log("🧪 삭제 후 getMap:", m.marker.getMap());
+                  }
+
+                  return !match; // 제거 대상은 제외
+                });
+
+                return updated;
+              });
+            } else {
+              console.log("❗다른 사용자들이 남아 있으므로 마커 유지:", usernamesLeft);
+
+              // ✅ 내 마커만 제거
+              setAllMarkers(prev => {
+                return prev.filter(m =>
+                  !(
+                    m.name === selectedPlace.place_name &&
+                    m.user_id === user_id &&
+                    Math.abs(m.lat - parseFloat(selectedPlace.y)) < 0.00001 &&
+                    Math.abs(m.lng - parseFloat(selectedPlace.x)) < 0.00001
+                  )
+                );
+              });
             }
-            return !match;
-          });
-          return updated;
-        });
 
-        setSelectedPlace(null);
+            // ✅ 버튼 전환을 위해 selectedPlace 갱신
+            setSelectedPlace(prev => {
+              if (!matched) return null;
+              return { ...prev, usernames: usernamesLeft };
+            });
+          });
       });
   }
+
+
 
   const user_id = localStorage.getItem("user_id");
   const isMyMarker = allMarkers.some(marker =>
@@ -108,34 +152,12 @@ const MapContainer = () => {
           const pos = new window.kakao.maps.LatLng(place.latitude, place.longitude);
           const marker = new window.kakao.maps.Marker({ position: pos, map });
 
-          window.kakao.maps.event.addListener(marker, 'click', () => {
-            fetch("http://localhost:5000/places")
-              .then(res => res.json())
-              .then(allPlaces => {
-                const matched = allPlaces.find(p =>
-                  p.name === place.name &&
-                  Math.abs(parseFloat(p.latitude) - parseFloat(place.latitude)) < 0.00001 &&
-                  Math.abs(parseFloat(p.longitude) - parseFloat(place.longitude)) < 0.00001
-                );
-
-                if (matched) {
-                  console.log("🧪 최신 usernames:", matched.usernames);
-                  setSelectedPlace({
-                    place_name: matched.name,
-                    address_name: matched.address,
-                    y: matched.latitude,
-                    x: matched.longitude,
-                    phone: matched.phone,
-                    place_url: matched.place_url,
-                    usernames: matched.usernames
-                      ? matched.usernames.split(',').map(n => n.trim())
-                      : []
-                  });
-                  map.panTo(marker.getPosition());
-                }
-              });
+          // ✅ 공통 클릭 이벤트 적용
+          attachClickEventToMarker(marker, {
+            name: place.name,
+            latitude: place.latitude,
+            longitude: place.longitude
           });
-
 
           return {
             name: place.name,
@@ -167,34 +189,12 @@ const MapContainer = () => {
               const pos = new window.kakao.maps.LatLng(place.latitude, place.longitude);
               const marker = new window.kakao.maps.Marker({ position: pos, map });
 
-              window.kakao.maps.event.addListener(marker, 'click', () => {
-                fetch("http://localhost:5000/places")
-                  .then(res => res.json())
-                  .then(allPlaces => {
-                    const matched = allPlaces.find(p =>
-                      p.name === place.name &&
-                      Math.abs(parseFloat(p.latitude) - parseFloat(place.latitude)) < 0.00001 &&
-                      Math.abs(parseFloat(p.longitude) - parseFloat(place.longitude)) < 0.00001
-                    );
-
-                    if (matched) {
-                      console.log("🧪 최신 usernames:", matched.usernames);
-                      setSelectedPlace({
-                        place_name: matched.name,
-                        address_name: matched.address,
-                        y: matched.latitude,
-                        x: matched.longitude,
-                        phone: matched.phone,
-                        place_url: matched.place_url,
-                        usernames: matched.usernames
-                          ? matched.usernames.split(',').map(n => n.trim())
-                          : []
-                      });
-                      map.panTo(marker.getPosition());
-                    }
-                  });
+              // ✅ 공통 클릭 이벤트 적용
+              attachClickEventToMarker(marker, {
+                name: place.name,
+                latitude: place.latitude,
+                longitude: place.longitude
               });
-
 
               const markerObj = {
                 name: place.name,
@@ -210,6 +210,7 @@ const MapContainer = () => {
             });
           });
       });
+
 
     window.kakao.maps.event.addListener(map, 'click', function (mouseEvent) {
       const latlng = mouseEvent.latLng;
@@ -336,13 +337,25 @@ const MapContainer = () => {
     }
   }
 
-
   const handlePlaceClick = (place) => {
     setSelectedPlace(place);
 
     if (mapObj) {
-      if (tempMarker) tempMarker.setMap(null);
-      if (tempInfoWindow) tempInfoWindow.close();
+      if (tempMarkerRef.current) {
+        tempMarkerRef.current.setMap(null);
+        tempMarkerRef.current = null;
+      }
+
+      // ✅ 이전 페이드 타이머 중지
+      if (fadeTimerRef.current) {
+        clearInterval(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+      }
+
+      if (tempInfoWindow) {
+        tempInfoWindow.close();
+        setTempInfoWindow(null);
+      }
 
       const latlng = new window.kakao.maps.LatLng(place.y, place.x);
       const marker = new window.kakao.maps.Marker({
@@ -350,15 +363,11 @@ const MapContainer = () => {
         map: mapObj
       });
 
-      const infowindow = new window.kakao.maps.InfoWindow({
-        content: `<div style="padding:5px; font-size:13px;">📍 ${place.place_name}</div>`,
-        removable: true
-      });
-      infowindow.open(mapObj, marker);
+      // ✅ useRef에 직접 저장
+      tempMarkerRef.current = marker;
+      setTempMarker(marker); // 필요하면 유지
 
-      setTempMarker(marker);
-      setTempInfoWindow(infowindow);
-      mapObj.setCenter(latlng);
+      mapObj.panTo(latlng);
     }
   };
 
@@ -380,21 +389,14 @@ const MapContainer = () => {
       mapObj.setCenter(latlng);
 
       setMyMarkerObjects(prev => [...prev, { name: selectedPlace.place_name, marker }]);
-
-      window.kakao.maps.event.addListener(marker, 'click', () => {
-        setSelectedPlace({
-          place_name: selectedPlace.place_name,
-          address_name: selectedPlace.address_name,
-          y: selectedPlace.y,
-          x: selectedPlace.x,
-          phone: selectedPlace.phone,
-          place_url: selectedPlace.place_url,
-          usernames: selectedPlace.usernames
-        });
-        mapObj.panTo(marker.getPosition());
-      });
-
       setMarkerObj(marker);
+
+      // ✅ 공통 마커 클릭 이벤트 등록
+      attachClickEventToMarker(marker, {
+        name: selectedPlace.place_name,
+        latitude: selectedPlace.y,
+        longitude: selectedPlace.x
+      });
 
       const existing = allMarkers.find(m =>
         m.name === selectedPlace.place_name &&
@@ -422,8 +424,6 @@ const MapContainer = () => {
         .then(data => {
           console.log("✅ DB 저장 완료:", data);
 
-
-
           setAllMarkers(prev => [
             ...prev,
             {
@@ -436,22 +436,64 @@ const MapContainer = () => {
               phone: phone
             }
           ]);
-          setSelectedPlace(prev => {
-            const updated = {
-              ...prev,
-              usernames: Array.isArray(prev.usernames)
-                ? [...prev.usernames, userName]
-                : [userName]
-            };
-            console.log("🧪 업데이트된 selectedPlace.usernames:", updated.usernames);
-            return updated;
-          });
 
+          // 🔄 usernames 재조회
+          fetch("http://localhost:5000/places")
+            .then(res => res.json())
+            .then(allPlaces => {
+              const matched = allPlaces.find(p =>
+                p.name === selectedPlace.place_name &&
+                Math.abs(parseFloat(p.latitude) - parseFloat(selectedPlace.y)) < 0.00001 &&
+                Math.abs(parseFloat(p.longitude) - parseFloat(selectedPlace.x)) < 0.00001
+              );
+
+              if (matched) {
+                setSelectedPlace(prev => ({
+                  ...prev,
+                  usernames: matched.usernames
+                    ? matched.usernames.split(',').map(n => n.trim())
+                    : []
+                }));
+                console.log("🧪 usernames 최신화 완료:", matched.usernames);
+              }
+            });
         })
         .catch(err => {
           console.error("❌ DB 저장 실패:", err);
         });
     }
+  };
+
+
+  // 공통 마커 클릭 이벤트 핸들러
+  const attachClickEventToMarker = (marker, place) => {
+    window.kakao.maps.event.addListener(marker, 'click', () => {
+      fetch("http://localhost:5000/places")
+        .then(res => res.json())
+        .then(allPlaces => {
+          const matched = allPlaces.find(p =>
+            p.name === place.name &&
+            Math.abs(parseFloat(p.latitude) - parseFloat(place.latitude)) < 0.00001 &&
+            Math.abs(parseFloat(p.longitude) - parseFloat(place.longitude)) < 0.00001
+          );
+
+          if (matched) {
+            console.log("🧪 최신 usernames:", matched.usernames);
+            setSelectedPlace({
+              place_name: matched.name,
+              address_name: matched.address,
+              y: matched.latitude,
+              x: matched.longitude,
+              phone: matched.phone,
+              place_url: matched.place_url,
+              usernames: matched.usernames
+                ? matched.usernames.split(',').map(n => n.trim())
+                : []
+            });
+            mapObj?.panTo(marker.getPosition());
+          }
+        });
+    });
   };
 
   function findNearestPlace(clickedLatLng, places) {
@@ -490,132 +532,210 @@ const MapContainer = () => {
         console.error("위치 정보 불러오기 실패:", err);
       });
   };
+/*
+  const handleSearch = () => {
+    if (!searchKeyword.trim()) return;
+
+    const ps = new window.kakao.maps.services.Places();
+    ps.keywordSearch(searchKeyword, (data, status) => {
+      if (status === window.kakao.maps.services.Status.OK) {
+        setSearchResults(data);
+      } else {
+        setSearchResults([]);
+      }
+    });
+  };
+*/
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-      <div
-        id="map"
-        style={{
-          position: "relative",
-          width: "800px",
-          height: "500px",
-          border: "1px solid #ccc",
-          borderRadius: "10px",
-          marginTop: "20px"
-        }}
-      >
-        <button
-          onClick={handleMoveToMyLocation}
-          style={{
-            position: 'absolute',
-            bottom: '20px',
-            right: '10px',
-            zIndex: 1000,
-            padding: '10px 16px',
-            backgroundColor: '#3182f6',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
-          }}
-        >
-          📍 내 위치로 이동
-        </button>
-      </div>
+    <div style={{
+      display: "flex",
+      justifyContent: "center", // 전체 화면에서 중앙 정렬
+      width: "100%",
+    }}>
+      {/* 전체 콘텐츠 컨테이너 */}
+      <div style={{
+        display: "flex",
+        flexDirection: "row",
+        maxWidth: "1200px", // 전체 폭 고정
+        width: "100%"
+      }}>
 
-      {address && (
+        
+          
+        {/* ✅ 오른쪽 지도 + 음식점/카페 리스트 + 모달 */}
         <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          gap: '20px',
-          marginTop: '20px',
-          width: '100%',
-          maxWidth: '800px'
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          margin: "0 auto"
         }}>
-          <div style={{ flex: 1 }}>
-            <h4>🍽 음식점</h4>
-            <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0 }}>
-              {restaurants.map((place, index) => (
-                <li key={index}>
-                  <button
-                    onClick={() => handlePlaceClick(place)}
-                    style={{ all: 'unset', cursor: 'pointer', color: 'blue' }}
-                  >
-                    {place.place_name}
-                  </button>
-                </li>
-              ))}
-            </ul>
+          {/* 지도 */}
+          <div
+            id="map"
+            style={{
+              position: "relative",
+              width: "800px",
+              height: "500px",
+              border: "1px solid #ccc",
+              borderRadius: "10px",
+              marginTop: "20px"
+            }}
+          >
+            <button
+              onClick={handleMoveToMyLocation}
+              style={{
+                position: 'absolute',
+                bottom: '20px',
+                right: '10px',
+                zIndex: 1000,
+                padding: '10px 16px',
+                backgroundColor: '#3182f6',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
+              }}
+            >
+              📍 내 위치로 이동
+            </button>
           </div>
-          <div style={{ width: '1px', backgroundColor: '#ccc' }}></div>
-          <div style={{ flex: 1 }}>
-            <h4>☕ 카페</h4>
-            <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0 }}>
-              {cafes.map((place, index) => (
-                <li key={index}>
-                  <button
-                    onClick={() => handlePlaceClick(place)}
-                    style={{ all: 'unset', cursor: 'pointer', color: 'green' }}
-                  >
-                    {place.place_name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
 
-      {selectedPlace && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            backgroundColor: '#fff',
-            border: '1px solid #ccc',
-            borderRadius: '10px',
-            padding: '20px',
-            zIndex: 9999,
-            width: '300px'
-          }}
-        >
-          <h3>{selectedPlace.place_name}</h3>
-          <p>📍 {selectedPlace.address_name}</p>
-          <p>📞 {selectedPlace.phone || '정보 없음'}</p>
-          {selectedPlace.usernames && (
-            <p>👥 등록한 사용자: {Array.isArray(selectedPlace.usernames)
-              ? selectedPlace.usernames.join(', ')
-              : selectedPlace.usernames}</p>
+          {/* 음식점 / 카페 리스트 */}
+          {address && (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: '20px',
+              marginTop: '20px',
+              width: '100%',
+              maxWidth: '800px'
+            }}>
+              <div style={{ flex: 1 }}>
+                <h4>🍽 음식점</h4>
+                <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0 }}>
+                  {restaurants.map((place, index) => (
+                    <li key={index}>
+                      <button
+                        onClick={() => handlePlaceClick(place)}
+                        style={{ all: 'unset', cursor: 'pointer', color: 'blue' }}
+                      >
+                        {place.place_name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div style={{ width: '1px', backgroundColor: '#ccc' }}></div>
+              <div style={{ flex: 1 }}>
+                <h4>☕ 카페</h4>
+                <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0 }}>
+                  {cafes.map((place, index) => (
+                    <li key={index}>
+                      <button
+                        onClick={() => handlePlaceClick(place)}
+                        style={{ all: 'unset', cursor: 'pointer', color: 'green' }}
+                      >
+                        {place.place_name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           )}
 
-          <a
-            href={
-              selectedPlace.place_url
-                ? selectedPlace.place_url
-                : `https://map.kakao.com/link/search/${encodeURIComponent(selectedPlace.place_name)}`
-            }
-            target="_blank"
-            rel="noreferrer"
-          >
-            지도에서 보기
-          </a>
-          <br />
-          <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
-            <button onClick={() => setSelectedPlace(null)}>닫기</button>
-            {!isMyMarker ? (
-              <button onClick={handleAddMarker}>마커 추가</button>
-            ) : (
-              <button onClick={handleDeleteMarker}>마커 삭제</button>
-            )}
-          </div>
+          {/* 마커 정보 모달 */}
+          {selectedPlace && (
+            <div
+              style={{
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                backgroundColor: '#fff',
+                border: '1px solid #ccc',
+                borderRadius: '10px',
+                padding: '20px',
+                zIndex: 9999,
+                width: '300px'
+              }}
+            >
+              <h3>{selectedPlace.place_name}</h3>
+              <p>📍 {selectedPlace.address_name}</p>
+              <p>📞 {selectedPlace.phone || '정보 없음'}</p>
+              {selectedPlace.usernames && (
+                <p>👥 등록한 사용자: {Array.isArray(selectedPlace.usernames)
+                  ? selectedPlace.usernames.join(', ')
+                  : selectedPlace.usernames}</p>
+              )}
+              <a
+                href={
+                  selectedPlace.place_url
+                    ? selectedPlace.place_url
+                    : `https://map.kakao.com/link/search/${encodeURIComponent(selectedPlace.place_name)}`
+                }
+                target="_blank"
+                rel="noreferrer"
+              >
+                지도에서 보기
+              </a>
+              <br />
+              <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
+                <button
+                  onClick={() => {
+                    if (tempInfoWindow) {
+                      tempInfoWindow.close();
+                      setTempInfoWindow(null);
+                    }
+
+                    if (tempMarkerRef.current) {
+                      let opacity = 1.0;
+                      if (fadeTimerRef.current) {
+                        clearInterval(fadeTimerRef.current);
+                      }
+                      fadeTimerRef.current = setInterval(() => {
+                        if (!tempMarkerRef.current) {
+                          clearInterval(fadeTimerRef.current);
+                          fadeTimerRef.current = null;
+                          return;
+                        }
+
+                        opacity -= 0.02;
+                        if (opacity <= 0) {
+                          tempMarkerRef.current.setMap(null);
+                          tempMarkerRef.current = null;
+                          clearInterval(fadeTimerRef.current);
+                          fadeTimerRef.current = null;
+                        } else {
+                          tempMarkerRef.current.setOpacity(opacity);
+                        }
+                      }, 50);
+                    }
+
+                    setTempMarker(null);
+                    setSelectedPlace(null);
+                  }}
+                >
+                  닫기
+                </button>
+                {!isMyMarker ? (
+                  <button onClick={handleAddMarker}>마커 추가</button>
+                ) : (
+                  <button onClick={handleDeleteMarker}>마커 삭제</button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
+
+
 };
 
 export default MapContainer;
