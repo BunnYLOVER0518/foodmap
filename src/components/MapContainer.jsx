@@ -465,7 +465,6 @@ const MapContainer = () => {
   };
 
 
-  // 공통 마커 클릭 이벤트 핸들러
   const attachClickEventToMarker = (marker, place) => {
     window.kakao.maps.event.addListener(marker, 'click', () => {
       fetch("http://localhost:5000/places")
@@ -490,11 +489,21 @@ const MapContainer = () => {
                 ? matched.usernames.split(',').map(n => n.trim())
                 : []
             });
-            mapObj?.panTo(marker.getPosition());
+
+            // ✅ 중심 이동 추가
+            if (mapObj) {
+              const latlng = new window.kakao.maps.LatLng(
+                parseFloat(matched.latitude),
+                parseFloat(matched.longitude)
+              );
+              mapObj.panTo(latlng);
+
+            }
           }
         });
     });
   };
+
 
   function findNearestPlace(clickedLatLng, places) {
     let minDist = Infinity;
@@ -532,20 +541,20 @@ const MapContainer = () => {
         console.error("위치 정보 불러오기 실패:", err);
       });
   };
-/*
-  const handleSearch = () => {
-    if (!searchKeyword.trim()) return;
-
-    const ps = new window.kakao.maps.services.Places();
-    ps.keywordSearch(searchKeyword, (data, status) => {
-      if (status === window.kakao.maps.services.Status.OK) {
-        setSearchResults(data);
-      } else {
-        setSearchResults([]);
-      }
-    });
-  };
-*/
+  /*
+    const handleSearch = () => {
+      if (!searchKeyword.trim()) return;
+  
+      const ps = new window.kakao.maps.services.Places();
+      ps.keywordSearch(searchKeyword, (data, status) => {
+        if (status === window.kakao.maps.services.Status.OK) {
+          setSearchResults(data);
+        } else {
+          setSearchResults([]);
+        }
+      });
+    };
+  */
 
   return (
     <div style={{
@@ -561,8 +570,8 @@ const MapContainer = () => {
         width: "100%"
       }}>
 
-        
-          
+
+
         {/* ✅ 오른쪽 지도 + 음식점/카페 리스트 + 모달 */}
         <div style={{
           flex: 1,
