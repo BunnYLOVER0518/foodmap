@@ -16,6 +16,7 @@ const MapContainer = () => {
   const fadeTimerRef = useRef(null);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [searchResults, setSearchResults] = useState([]);
+  const [useDistanceFilter, setUseDistanceFilter] = useState(false);
 
 
   useEffect(() => {
@@ -36,7 +37,6 @@ const MapContainer = () => {
     script.onload = () => window.kakao.maps.load(() => drawMap());
     document.head.appendChild(script);
   }, []);
-
 
   function handleDeleteMarker() {
     const user_id = localStorage.getItem("user_id");
@@ -136,7 +136,7 @@ const MapContainer = () => {
     const defaultCenter = new window.kakao.maps.LatLng(37.557466, 126.924363);
     const map = new window.kakao.maps.Map(container, {
       center: defaultCenter,
-      level: 3,
+      level: 2,
     });
 
     const zoomControl = new window.kakao.maps.ZoomControl();
@@ -337,7 +337,8 @@ const MapContainer = () => {
     }
   }
 
-  const handlePlaceClick = (place) => {
+
+  const handlePlaceClick = (place, fromSearchList = false) => {
     setSelectedPlace(place);
 
     if (mapObj) {
@@ -346,7 +347,6 @@ const MapContainer = () => {
         tempMarkerRef.current = null;
       }
 
-      // ✅ 이전 페이드 타이머 중지
       if (fadeTimerRef.current) {
         clearInterval(fadeTimerRef.current);
         fadeTimerRef.current = null;
@@ -358,18 +358,27 @@ const MapContainer = () => {
       }
 
       const latlng = new window.kakao.maps.LatLng(place.y, place.x);
+
+      const markerImage = fromSearchList
+        ? new window.kakao.maps.MarkerImage(
+          "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png",
+          new window.kakao.maps.Size(24, 35)
+        )
+        : undefined;
+
+
       const marker = new window.kakao.maps.Marker({
         position: latlng,
-        map: mapObj
+        map: mapObj,
+        image: markerImage
       });
 
-      // ✅ useRef에 직접 저장
       tempMarkerRef.current = marker;
-      setTempMarker(marker); // 필요하면 유지
-
+      setTempMarker(marker);
       mapObj.panTo(latlng);
     }
   };
+
 
   const handleAddMarker = () => {
     const user_id = localStorage.getItem("user_id");
@@ -541,205 +550,310 @@ const MapContainer = () => {
         console.error("위치 정보 불러오기 실패:", err);
       });
   };
-  /*
-    const handleSearch = () => {
-      if (!searchKeyword.trim()) return;
-  
+
+ const handleSearch = () => {
+  if (!searchKeyword.trim()) return;
+
+  const userId = localStorage.getItem("user_id");
+
+  fetch(`http://localhost:5000/user/${userId}/location`)
+    .then(res => res.json())
+    .then(pos => {
+      const userLat = pos.latitude;
+      const userLng = pos.longitude;
+      const userPosition = new window.kakao.maps.LatLng(userLat, userLng);
+
       const ps = new window.kakao.maps.services.Places();
+
       ps.keywordSearch(searchKeyword, (data, status) => {
-        if (status === window.kakao.maps.services.Status.OK) {
-          setSearchResults(data);
-        } else {
+        if (status !== window.kakao.maps.services.Status.OK || data.length === 0) {
           setSearchResults([]);
+          return;
         }
+
+        // 음식점/카페만 필터링
+        let filtered = data.filter(
+          (p) => p.category_group_code === "FD6" || p.category_group_code === "CE7"
+        );
+
+        // 거리 계산 후 정렬
+        filtered = filtered.map(p => ({
+          ...p,
+          distance: getDistance(userLat, userLng, parseFloat(p.y), parseFloat(p.x))
+        })).sort((a, b) => a.distance - b.distance);
+
+        // 거리 제한 필터
+        if (useDistanceFilter) {
+          filtered = filtered.filter(p => p.distance <= 1000);
+        }
+
+        setSearchResults(filtered);
+
+        // 가장 가까운 장소 자동 선택
+        if (filtered.length > 0) {
+          const exactMatch = filtered.find(p =>
+            p.place_name.toLowerCase().includes(searchKeyword.toLowerCase())
+          );
+          handlePlaceClick(exactMatch || filtered[0]);
+        }
+      }, {
+        location: userPosition, // ✅ DB에서 가져온 위치 기준
+        radius: 3000
       });
-    };
-  */
+    })
+    .catch(() => {
+      alert("위치 정보를 불러오지 못했습니다.");
+    });
+};
+
+
+
+
+  function getDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const toRad = x => (x * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
 
   return (
-    <div style={{
-      display: "flex",
-      justifyContent: "center", // 전체 화면에서 중앙 정렬
-      width: "100%",
-    }}>
-      {/* 전체 콘텐츠 컨테이너 */}
-      <div style={{
-        display: "flex",
-        flexDirection: "row",
-        maxWidth: "1200px", // 전체 폭 고정
-        width: "100%"
-      }}>
+    <div style={{ display: "flex", width: "100%" }}>
+      {/* 좌측: 검색창 + 결과 목록 */}
+      <div style={{ flex: 1, padding: "20px", borderRight: "1px solid #ccc" }}>
+        <div style={{ margin: "10px 0" }}>
+          <label style={{ fontSize: "14px" }}>
+            <input
+              type="checkbox"
+              checked={useDistanceFilter}
+              onChange={(e) => setUseDistanceFilter(e.target.checked)}
+              style={{ marginRight: "6px" }}
+            />
+            내 위치 기준 반경 1km 이내만 보기
+          </label>
+        </div>
+        <h3>🔍 장소 또는 가게 검색</h3>
+        <input
+          type="text"
+          value={searchKeyword}
+          onChange={(e) => setSearchKeyword(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+          placeholder="예: 스타벅스, 홍대입구역"
+          style={{
+            width: "95%",
+            padding: "10px",
+            fontSize: "16px",
+            marginBottom: "10px",
+            borderRadius: "6px",
+            border: "1px solid #ccc"
+          }}
+        />
+        <button
+          onClick={handleSearch}
+          style={{
+            width: "100%",
+            padding: "10px",
+            fontWeight: "bold",
+            border: "none",
+            borderRadius: "6px",
+            backgroundColor: "#3182f6",
+            color: "white",
+            cursor: "pointer"
+          }}
+        >
+          검색
+        </button>
 
+        <ul style={{ listStyle: "none", padding: 0, marginTop: "20px" }}>
+          {searchResults.map((place, index) => (
+            <li key={index} style={{ marginBottom: "10px" }}>
+              <button
+                onClick={() => handlePlaceClick(place)}
+                style={{
+                  all: "unset",
+                  cursor: "pointer",
+                  color: "#007aff",
+                  fontWeight: "bold"
+                }}
+              >
+                {place.place_name}
+                <br />
+                <span style={{ fontSize: "12px", color: "#555" }}>
+                  {place.address_name}
+                </span>
+                {place.distance != null && (
+                  <div style={{ fontSize: "12px", color: "#888" }}>
+                    📍 거리: {Math.round(place.distance)}m
+                  </div>
+                )}
+              </button>
+            </li>
+          ))}
 
+        </ul>
+      </div>
 
-        {/* ✅ 오른쪽 지도 + 음식점/카페 리스트 + 모달 */}
-        <div style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          margin: "0 auto"
-        }}>
-          {/* 지도 */}
-          <div
-            id="map"
+      {/* 우측: 지도 + 음식점/카페 리스트 + 모달 */}
+      <div style={{ flex: 3, display: "flex", flexDirection: "column", alignItems: "center", padding: "20px" }}>
+        <div
+          id="map"
+          style={{
+            width: "100%",
+            height: "700px",
+            border: "1px solid #ccc",
+            borderRadius: "10px",
+            marginBottom: "20px"
+          }}
+        >
+          <button
+            onClick={handleMoveToMyLocation}
             style={{
-              position: "relative",
-              width: "800px",
-              height: "500px",
-              border: "1px solid #ccc",
-              borderRadius: "10px",
-              marginTop: "20px"
+              position: 'absolute',
+              bottom: '20px',
+              right: '10px',
+              zIndex: 1000,
+              padding: '10px 16px',
+              backgroundColor: '#3182f6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
             }}
           >
-            <button
-              onClick={handleMoveToMyLocation}
-              style={{
-                position: 'absolute',
-                bottom: '20px',
-                right: '10px',
-                zIndex: 1000,
-                padding: '10px 16px',
-                backgroundColor: '#3182f6',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.3)'
-              }}
-            >
-              📍 내 위치로 이동
-            </button>
-          </div>
-
-          {/* 음식점 / 카페 리스트 */}
-          {address && (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '20px',
-              marginTop: '20px',
-              width: '100%',
-              maxWidth: '800px'
-            }}>
-              <div style={{ flex: 1 }}>
-                <h4>🍽 음식점</h4>
-                <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0 }}>
-                  {restaurants.map((place, index) => (
-                    <li key={index}>
-                      <button
-                        onClick={() => handlePlaceClick(place)}
-                        style={{ all: 'unset', cursor: 'pointer', color: 'blue' }}
-                      >
-                        {place.place_name}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div style={{ width: '1px', backgroundColor: '#ccc' }}></div>
-              <div style={{ flex: 1 }}>
-                <h4>☕ 카페</h4>
-                <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0 }}>
-                  {cafes.map((place, index) => (
-                    <li key={index}>
-                      <button
-                        onClick={() => handlePlaceClick(place)}
-                        style={{ all: 'unset', cursor: 'pointer', color: 'green' }}
-                      >
-                        {place.place_name}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
-
-          {/* 마커 정보 모달 */}
-          {selectedPlace && (
-            <div
-              style={{
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                backgroundColor: '#fff',
-                border: '1px solid #ccc',
-                borderRadius: '10px',
-                padding: '20px',
-                zIndex: 9999,
-                width: '300px'
-              }}
-            >
-              <h3>{selectedPlace.place_name}</h3>
-              <p>📍 {selectedPlace.address_name}</p>
-              <p>📞 {selectedPlace.phone || '정보 없음'}</p>
-              {selectedPlace.usernames && (
-                <p>👥 등록한 사용자: {Array.isArray(selectedPlace.usernames)
-                  ? selectedPlace.usernames.join(', ')
-                  : selectedPlace.usernames}</p>
-              )}
-              <a
-                href={
-                  selectedPlace.place_url
-                    ? selectedPlace.place_url
-                    : `https://map.kakao.com/link/search/${encodeURIComponent(selectedPlace.place_name)}`
-                }
-                target="_blank"
-                rel="noreferrer"
-              >
-                지도에서 보기
-              </a>
-              <br />
-              <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
-                <button
-                  onClick={() => {
-                    if (tempInfoWindow) {
-                      tempInfoWindow.close();
-                      setTempInfoWindow(null);
-                    }
-
-                    if (tempMarkerRef.current) {
-                      let opacity = 1.0;
-                      if (fadeTimerRef.current) {
-                        clearInterval(fadeTimerRef.current);
-                      }
-                      fadeTimerRef.current = setInterval(() => {
-                        if (!tempMarkerRef.current) {
-                          clearInterval(fadeTimerRef.current);
-                          fadeTimerRef.current = null;
-                          return;
-                        }
-
-                        opacity -= 0.02;
-                        if (opacity <= 0) {
-                          tempMarkerRef.current.setMap(null);
-                          tempMarkerRef.current = null;
-                          clearInterval(fadeTimerRef.current);
-                          fadeTimerRef.current = null;
-                        } else {
-                          tempMarkerRef.current.setOpacity(opacity);
-                        }
-                      }, 50);
-                    }
-
-                    setTempMarker(null);
-                    setSelectedPlace(null);
-                  }}
-                >
-                  닫기
-                </button>
-                {!isMyMarker ? (
-                  <button onClick={handleAddMarker}>마커 추가</button>
-                ) : (
-                  <button onClick={handleDeleteMarker}>마커 삭제</button>
-                )}
-              </div>
-            </div>
-          )}
+            📍 내 위치로 이동
+          </button>
         </div>
+
+        {/* 음식점 / 카페 리스트 */}
+        {address && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '20px',
+            width: '100%'
+          }}>
+            <div style={{ flex: 1 }}>
+              <h4>🍽 음식점</h4>
+              <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0 }}>
+                {restaurants.map((place, index) => (
+                  <li key={index}>
+                    <button
+                      onClick={() => handlePlaceClick(place, true)}
+                      style={{ all: 'unset', cursor: 'pointer', color: 'blue' }}
+                    >
+                      {place.place_name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div style={{ width: '1px', backgroundColor: '#ccc' }}></div>
+            <div style={{ flex: 1 }}>
+              <h4>☕ 카페</h4>
+              <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0 }}>
+                {cafes.map((place, index) => (
+                  <li key={index}>
+                    <button
+                      onClick={() => handlePlaceClick(place, true)}
+                      style={{ all: 'unset', cursor: 'pointer', color: 'green' }}
+                    >
+                      {place.place_name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* 마커 정보 모달 */}
+        {selectedPlace && (
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: '#fff',
+              border: '1px solid #ccc',
+              borderRadius: '10px',
+              padding: '20px',
+              zIndex: 9999,
+              width: '300px'
+            }}
+          >
+            <h3>{selectedPlace.place_name}</h3>
+            <p>📍 {selectedPlace.address_name}</p>
+            <p>📞 {selectedPlace.phone || '정보 없음'}</p>
+            {selectedPlace.usernames && (
+              <p>👥 등록한 사용자: {Array.isArray(selectedPlace.usernames)
+                ? selectedPlace.usernames.join(', ')
+                : selectedPlace.usernames}</p>
+            )}
+            <a
+              href={
+                selectedPlace.place_url
+                  ? selectedPlace.place_url
+                  : `https://map.kakao.com/link/search/${encodeURIComponent(selectedPlace.place_name)}`
+              }
+              target="_blank"
+              rel="noreferrer"
+            >
+              지도에서 보기
+            </a>
+            <br />
+            <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
+              <button
+                onClick={() => {
+                  if (tempInfoWindow) {
+                    tempInfoWindow.close();
+                    setTempInfoWindow(null);
+                  }
+
+                  if (tempMarkerRef.current) {
+                    let opacity = 1.0;
+                    if (fadeTimerRef.current) {
+                      clearInterval(fadeTimerRef.current);
+                    }
+                    fadeTimerRef.current = setInterval(() => {
+                      if (!tempMarkerRef.current) {
+                        clearInterval(fadeTimerRef.current);
+                        fadeTimerRef.current = null;
+                        return;
+                      }
+
+                      opacity -= 0.02;
+                      if (opacity <= 0) {
+                        tempMarkerRef.current.setMap(null);
+                        tempMarkerRef.current = null;
+                        clearInterval(fadeTimerRef.current);
+                        fadeTimerRef.current = null;
+                      } else {
+                        tempMarkerRef.current.setOpacity(opacity);
+                      }
+                    }, 50);
+                  }
+
+                  setTempMarker(null);
+                  setSelectedPlace(null);
+                }}
+              >
+                닫기
+              </button>
+              {!isMyMarker ? (
+                <button onClick={handleAddMarker}>마커 추가</button>
+              ) : (
+                <button onClick={handleDeleteMarker}>마커 삭제</button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
