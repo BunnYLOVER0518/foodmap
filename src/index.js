@@ -6,6 +6,7 @@ import Login from './pages/Login.jsx';
 import Main from './pages/Main.jsx' 
 import MyPage from './pages/MyPage.jsx';
 import EditProfile from './pages/EditProfile.jsx';
+import UserPage from './pages/UserPage.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -16,6 +17,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/login" element={<Login />} /> 
         <Route path="/mypage" element={<MyPage />} />
         <Route path="/mypage/edit" element={<EditProfile />} />
+        <Route path="/user/:username" element={<UserPage />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>,

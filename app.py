@@ -204,8 +204,6 @@ def get_user_places(user_id):
     return jsonify(places)
 
 
-
-
 @app.route('/places', methods=['GET'])
 def get_all_places():
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -231,8 +229,6 @@ def get_all_places():
     conn.close()
     return jsonify(places)
 
-
-
 @app.route('/delete_place', methods=['DELETE'])
 def delete_place():
     data = request.get_json()
@@ -248,6 +244,74 @@ def delete_place():
     conn.close()
 
     return jsonify({"message": "장소 삭제 완료"})
+
+
+@app.route("/user_info/<username>")
+def get_user_info_by_name(username):
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor(dictionary=True)
+    query = "SELECT id, name, image_path, created_at FROM Users WHERE name = %s"
+    cursor.execute(query, (username,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return jsonify(user) if user else {}
+
+
+@app.route("/reviews/user/<username>")
+def get_user_reviews(username):
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor(dictionary=True)
+    query = """
+        SELECT r.*, p.name AS place_name 
+        FROM Reviews r
+        JOIN Places p ON r.place_id = p.id
+        WHERE r.user_id = %s
+        ORDER BY r.created_at DESC
+    """
+    cursor.execute(query, (username,))
+    reviews = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(reviews)
+
+@app.route('/place/rating', methods=['GET'])
+def get_place_rating():
+    name = request.args.get("name")
+    lat = request.args.get("latitude")
+    lng = request.args.get("longitude")
+
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+
+    # 장소 ID를 찾는다
+    query = """
+        SELECT id FROM Places
+        WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
+        LIMIT 1
+    """
+    cursor.execute(query, (name, lat, lng))
+    result = cursor.fetchone()
+
+    if not result:
+        cursor.close()
+        conn.close()
+        return jsonify({"rating": None, "count": 0})
+
+    place_id = result[0]
+
+    # 해당 장소에 대한 평균 평점과 리뷰 수 조회
+    query = "SELECT AVG(rating), COUNT(*) FROM Reviews WHERE place_id = %s"
+    cursor.execute(query, (place_id,))
+    avg, count = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "rating": round(avg, 1) if avg else None,
+        "count": count
+    })
 
 
 if __name__ == '__main__':

@@ -369,10 +369,23 @@ const MapContainer = () => {
         const lng = parseFloat(place.x);
         const distance = getDistance(userLat, userLng, lat, lng);
 
-        setSelectedPlace({
+        // 1차: 기본 정보 설정
+        const selected = {
           ...place,
-          distance: Math.round(distance) // ✅ 거리 포함
-        });
+          distance: Math.round(distance)
+        };
+        setSelectedPlace(selected);
+
+        // 2차: 평점 fetch 추가
+        fetch(`http://localhost:5000/place/rating?name=${encodeURIComponent(place.place_name)}&latitude=${place.y}&longitude=${place.x}`)
+          .then(res => res.json())
+          .then(ratingData => {
+            setSelectedPlace(prev => ({
+              ...prev,
+              place_rating: ratingData.rating,
+              place_review_count: ratingData.count
+            }));
+          });
 
         if (mapObj) {
           if (tempMarkerRef.current) {
@@ -411,6 +424,7 @@ const MapContainer = () => {
         }
       });
   };
+
 
 
 
@@ -555,6 +569,9 @@ const MapContainer = () => {
                     : [],
                   distance: Math.round(dist)
                 });
+
+                
+
               });
           }
         });
@@ -654,9 +671,6 @@ const MapContainer = () => {
       });
   };
 
-
-
-
   function getDistance(lat1, lng1, lat2, lng2) {
     const R = 6371000;
     const toRad = x => (x * Math.PI) / 180;
@@ -667,6 +681,8 @@ const MapContainer = () => {
       Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
+
+  
 
 
   return (
@@ -720,7 +736,7 @@ const MapContainer = () => {
           {searchResults.map((place, index) => (
             <li key={index} style={{ marginBottom: "10px" }}>
               <button
-                onClick={() => handlePlaceClick(place)}
+                onClick={() => handlePlaceClick(place, true)}
                 style={{
                   all: "unset",
                   cursor: "pointer",
@@ -839,14 +855,40 @@ const MapContainer = () => {
             <h3>{selectedPlace.place_name}</h3>
             <p>📍 {selectedPlace.address_name}</p>
             <p>📞 {selectedPlace.phone || '정보 없음'}</p>
+
             {selectedPlace.usernames && (
-              <p>👥 등록한 사용자: {Array.isArray(selectedPlace.usernames)
-                ? selectedPlace.usernames.join(', ')
-                : selectedPlace.usernames}</p>
+              <p>
+                👥 등록한 사용자:{" "}
+                {Array.isArray(selectedPlace.usernames)
+                  ? selectedPlace.usernames.map((name, idx) => (
+                    <span key={idx}>
+                      <a
+                        href={`/user/${name}`}
+                        style={{ color: "#007aff", textDecoration: "underline", cursor: "pointer" }}
+                      >
+                        {name}
+                      </a>
+                      {idx < selectedPlace.usernames.length - 1 && ", "}
+                    </span>
+                  ))
+                  : selectedPlace.usernames}
+              </p>
             )}
+
             {selectedPlace.distance != null && (
               <p>📏 내 위치와의 거리: {selectedPlace.distance}m</p>
             )}
+
+            {/* ✅ 평점 표시 추가 */}
+            {selectedPlace.place_rating !== undefined && (
+              <p>
+                ⭐ 평점:{" "}
+                {selectedPlace.place_rating !== null
+                  ? `${selectedPlace.place_rating} / 5.0 (${selectedPlace.place_review_count}개)`
+                  : "리뷰 없음"}
+              </p>
+            )}
+
             <a
               href={
                 selectedPlace.place_url
@@ -905,6 +947,7 @@ const MapContainer = () => {
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
