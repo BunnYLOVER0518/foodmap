@@ -1,5 +1,5 @@
-CREATE DATABASE foodmap DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-use foodmap;
+CREATE DATABASE foodmap1 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+use foodmap1;
 
 -- 사용자 테이블
 CREATE TABLE Users (
@@ -21,7 +21,8 @@ CREATE TABLE Places (
     address VARCHAR(300),                        -- 주소
     category VARCHAR(100),                       -- 카테고리
     rating FLOAT DEFAULT 0,                       -- 평균 별점
-    user_id VARCHAR(100)
+    user_id VARCHAR(100),
+    phone VARCHAR(100)
 );
 
 -- 리뷰 테이블
@@ -67,17 +68,12 @@ CREATE TABLE Review_likes (
     FOREIGN KEY (review_id) REFERENCES Reviews(id)
 );
 
+
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE places;
 SET FOREIGN_KEY_CHECKS = 1;
 
-ALTER TABLE Places ADD phone VARCHAR(100);
-
 select * from users;
 select * from places;
-
-
-
-
 
 

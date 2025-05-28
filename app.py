@@ -14,7 +14,7 @@ DB_CONFIG = {
     "host": "localhost",
     "user": "root",
     "password": "fpelgkgo0518",
-    "database": "foodmap"
+    "database": "foodmap1"
 }
 
 
