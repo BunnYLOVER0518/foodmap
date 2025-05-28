@@ -75,5 +75,6 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 select * from users;
 select * from places;
+select * from reviews;
 
 

@@ -7,6 +7,8 @@ import Main from './pages/Main.jsx'
 import MyPage from './pages/MyPage.jsx';
 import EditProfile from './pages/EditProfile.jsx';
 import UserPage from './pages/UserPage.jsx';
+import ReviewList from './pages/ReviewList';
+import WriteReview from './pages/WriteReview';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -18,6 +20,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/mypage" element={<MyPage />} />
         <Route path="/mypage/edit" element={<EditProfile />} />
         <Route path="/user/:username" element={<UserPage />} />
+        <Route path="/reviewlist" element={<ReviewList />} />
+        <Route path="/write-review/:placeId" element={<WriteReview />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>,

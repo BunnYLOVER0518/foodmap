@@ -177,24 +177,25 @@ def get_user_places(user_id):
     cursor = conn.cursor(dictionary=True)
 
     query = """
-        SELECT 
-            p1.name,
-            p1.latitude,
-            p1.longitude,
-            p1.address,
-            p1.category,
-            p1.phone,
-            p1.user_id,
-            (
-                SELECT GROUP_CONCAT(u.name SEPARATOR ', ')
-                FROM Places p2
-                JOIN Users u ON p2.user_id = u.id
-                WHERE p2.name = p1.name
-                  AND p2.latitude = p1.latitude
-                  AND p2.longitude = p1.longitude
-            ) AS usernames
-        FROM Places p1
-        WHERE p1.user_id = %s
+      SELECT 
+    p1.id,                        
+    p1.name,
+    p1.latitude,
+    p1.longitude,
+    p1.address,
+    p1.category,
+    p1.phone,
+    p1.user_id,
+    (
+        SELECT GROUP_CONCAT(u.name SEPARATOR ', ')
+        FROM Places p2
+        JOIN Users u ON p2.user_id = u.id
+        WHERE p2.name = p1.name
+          AND p2.latitude = p1.latitude
+          AND p2.longitude = p1.longitude
+    ) AS usernames
+FROM Places p1
+WHERE p1.user_id = %s
     """
 
     cursor.execute(query, (user_id,))
@@ -211,6 +212,7 @@ def get_all_places():
 
     query = """
         SELECT
+            p.id,  -- ✅ 반드시 포함!
             p.name,
             p.latitude,
             p.longitude,
@@ -220,14 +222,14 @@ def get_all_places():
             GROUP_CONCAT(u.name SEPARATOR ', ') AS usernames
         FROM Places p
         JOIN Users u ON p.user_id = u.id
-        GROUP BY p.name, p.latitude, p.longitude, p.address, p.category, p.phone
+        GROUP BY p.id, p.name, p.latitude, p.longitude, p.address, p.category, p.phone
     """
-
     cursor.execute(query)
     places = cursor.fetchall()
     cursor.close()
     conn.close()
     return jsonify(places)
+
 
 @app.route('/delete_place', methods=['DELETE'])
 def delete_place():
@@ -275,32 +277,96 @@ def get_user_reviews(username):
     conn.close()
     return jsonify(reviews)
 
-@app.route('/place/rating', methods=['GET'])
-def get_place_rating():
-    name = request.args.get("name")
-    lat = request.args.get("latitude")
-    lng = request.args.get("longitude")
+
+
+
+@app.route('/api/user/<user_id>/reviewable-places')
+def get_reviewable_places(user_id):
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor(dictionary=True)
+
+    query = """
+        SELECT p.id, p.name, p.latitude, p.longitude, p.address
+        FROM Places p
+        WHERE p.user_id = %s
+        AND NOT EXISTS (
+            SELECT 1 FROM Reviews r
+            WHERE r.place_id = p.id AND r.user_id = %s
+        )
+    """
+    cursor.execute(query, (user_id, user_id))
+    places = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return jsonify(places)
+
+@app.route('/place/<int:place_id>')
+def get_place_info(place_id):
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor(dictionary=True)
+
+    query = "SELECT id, name, address, latitude, longitude FROM Places WHERE id = %s"
+    cursor.execute(query, (place_id,))
+    place = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if place:
+        return jsonify(place)
+    else:
+        return jsonify({"error": "장소를 찾을 수 없습니다."}), 404
+
+@app.route('/reviews', methods=['POST'])
+def create_review():
+    data = request.get_json()
+    place_id = data.get("place_id")
+    user_id = data.get("user_id")
+    rating = data.get("rating")
+    description = data.get("description")
+
+    if not all([place_id, user_id, rating]):
+        return jsonify({"error": "필수 항목 누락"}), 400
 
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor()
 
-    # 장소 ID를 찾는다
-    query = """
-        SELECT id FROM Places
-        WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
-        LIMIT 1
-    """
-    cursor.execute(query, (name, lat, lng))
-    result = cursor.fetchone()
+    # 1. 리뷰 저장
+    cursor.execute("""
+        INSERT INTO Reviews (place_id, user_id, rating, description, created_at)
+        VALUES (%s, %s, %s, %s, NOW())
+    """, (place_id, user_id, rating, description))
+    conn.commit()
 
-    if not result:
-        cursor.close()
-        conn.close()
+    # 2. 평균 평점 재계산
+    cursor.execute("SELECT AVG(rating) FROM Reviews WHERE place_id = %s", (place_id,))
+    avg_rating = cursor.fetchone()[0]
+    if avg_rating is None:
+        avg_rating = 0.0
+
+    print(f"🧮 평균 평점: {avg_rating}")
+
+    # 3. Places 테이블에 업데이트
+    cursor.execute("UPDATE Places SET rating = %s WHERE id = %s", (avg_rating, place_id))
+    conn.commit()
+
+    print(f"✅ Places 테이블 업데이트 완료")
+
+    cursor.close()
+    conn.close()
+    return jsonify({"message": "리뷰 작성 및 평점 반영 완료"})
+
+@app.route('/place/rating')
+def get_place_rating():
+    place_id = request.args.get("place_id")
+
+    if not place_id:
         return jsonify({"rating": None, "count": 0})
 
-    place_id = result[0]
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
 
-    # 해당 장소에 대한 평균 평점과 리뷰 수 조회
     query = "SELECT AVG(rating), COUNT(*) FROM Reviews WHERE place_id = %s"
     cursor.execute(query, (place_id,))
     avg, count = cursor.fetchone()
@@ -312,6 +378,7 @@ def get_place_rating():
         "rating": round(avg, 1) if avg else None,
         "count": count
     })
+
 
 
 if __name__ == '__main__':
