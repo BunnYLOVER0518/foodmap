@@ -233,7 +233,7 @@ def get_all_places():
 
 @app.route('/delete_place', methods=['DELETE'])
 def delete_place():
-    data = request.get_json(force=True)  # ✅ force=True로 JSON 파싱 보장
+    data = request.get_json(force=True)
     if not data:
         return jsonify({"error": "No data received"}), 400
 
@@ -245,13 +245,64 @@ def delete_place():
 
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor()
-    query = "DELETE FROM Places WHERE name = %s AND user_id = %s"
-    cursor.execute(query, (name, user_id))
+
+    # 1. 삭제 전 기준 위치 정보 확보
+    cursor.execute("SELECT latitude, longitude FROM Places WHERE name = %s AND user_id = %s", (name, user_id))
+    coords = cursor.fetchone()
+
+    if not coords:
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "장소 없음"}), 404
+
+    lat, lng = coords
+
+    # 2. 동일 장소의 모든 place_id 조회 (좌표 기준 동일 장소)
+    cursor.execute("""
+        SELECT id FROM Places
+        WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
+    """, (name, lat, lng))
+    place_ids = [row[0] for row in cursor.fetchall()]
+
+    # 3. 로그인된 사용자의 리뷰만 삭제
+    if place_ids:
+        format_strings = ','.join(['%s'] * len(place_ids))
+        cursor.execute(f"""
+            DELETE FROM Reviews 
+            WHERE user_id = %s AND place_id IN ({format_strings})
+        """, (user_id, *place_ids))
+        conn.commit()
+
+    # 4. 로그인된 사용자의 place 삭제
+    cursor.execute("DELETE FROM Places WHERE name = %s AND user_id = %s", (name, user_id))
     conn.commit()
+
+    # 5. 남아있는 동일 장소 place_id 다시 조회
+    cursor.execute("""
+        SELECT id FROM Places
+        WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
+    """, (name, lat, lng))
+    remaining_ids = [row[0] for row in cursor.fetchall()]
+
+    # 6. 남은 리뷰 기준으로 평점 재계산
+    if remaining_ids:
+        format_strings = ','.join(['%s'] * len(remaining_ids))
+        cursor.execute(f"""
+            SELECT AVG(rating) FROM Reviews WHERE place_id IN ({format_strings})
+        """, tuple(remaining_ids))
+        avg_rating = cursor.fetchone()[0]
+
+        for pid in remaining_ids:
+            cursor.execute("UPDATE Places SET rating = %s WHERE id = %s", (avg_rating, pid))
+        conn.commit()
+
     cursor.close()
     conn.close()
 
-    return jsonify({"message": "장소 삭제 완료"})
+    return jsonify({"message": "사용자 장소 및 리뷰 삭제 완료, 평점 갱신"})
+
+
+
 
 
 

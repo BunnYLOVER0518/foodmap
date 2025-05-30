@@ -115,7 +115,25 @@ const MapContainer = () => {
             // ✅ 버튼 전환을 위해 selectedPlace 갱신
             setSelectedPlace(prev => {
               if (!matched) return null;
-              return { ...prev, usernames: usernamesLeft };
+
+              const updated = { ...prev, usernames: usernamesLeft };
+
+              // 🔄 평점도 새로 요청
+              const placeId = matched.id;
+              if (placeId) {
+                fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
+                  .then(res => res.json())
+                  .then(ratingData => {
+                    setSelectedPlace(prev => ({
+                      ...prev,
+                      usernames: usernamesLeft,
+                      place_rating: ratingData.rating,
+                      place_review_count: ratingData.count
+                    }));
+                  });
+              }
+
+              return updated;
             });
           });
       });
@@ -367,84 +385,84 @@ const MapContainer = () => {
   }
 
 
-const handlePlaceClick = (place, fromSearchList = false) => {
-  const userId = localStorage.getItem("user_id");
+  const handlePlaceClick = (place, fromSearchList = false) => {
+    const userId = localStorage.getItem("user_id");
 
-  fetch(`http://localhost:5000/user/${userId}/location`)
-    .then(res => res.json())
-    .then(pos => {
-      const userLat = pos.latitude;
-      const userLng = pos.longitude;
+    fetch(`http://localhost:5000/user/${userId}/location`)
+      .then(res => res.json())
+      .then(pos => {
+        const userLat = pos.latitude;
+        const userLng = pos.longitude;
 
-      const lat = parseFloat(place.y);
-      const lng = parseFloat(place.x);
-      const distance = getDistance(userLat, userLng, lat, lng);
+        const lat = parseFloat(place.y);
+        const lng = parseFloat(place.x);
+        const distance = getDistance(userLat, userLng, lat, lng);
 
-      // 🔑 place.id 또는 place.place_id 추출
-      const placeId = place.id || place.place_id;
-      if (!placeId) {
-        console.warn("❌ placeId 없음. place 객체:", place);
-        return;
-      }
-
-      // ⭐ 장소 정보 우선 설정
-      const selected = {
-        ...place,
-        distance: Math.round(distance),
-        id: placeId
-      };
-      setSelectedPlace(selected);
-
-      // ⭐ 평점 fetch (place_id 기반)
-      fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
-        .then(res => res.json())
-        .then(ratingData => {
-          console.log("📊 평점 데이터:", ratingData);
-          setSelectedPlace(prev => ({
-            ...prev,
-            place_rating: ratingData.rating,
-            place_review_count: ratingData.count
-          }));
-        });
-
-      // ⭐ 마커 관련 처리
-      if (mapObj) {
-        if (tempMarkerRef.current) {
-          tempMarkerRef.current.setMap(null);
-          tempMarkerRef.current = null;
+        // 🔑 place.id 또는 place.place_id 추출
+        const placeId = place.id || place.place_id;
+        if (!placeId) {
+          console.warn("❌ placeId 없음. place 객체:", place);
+          return;
         }
 
-        if (fadeTimerRef.current) {
-          clearInterval(fadeTimerRef.current);
-          fadeTimerRef.current = null;
-        }
+        // ⭐ 장소 정보 우선 설정
+        const selected = {
+          ...place,
+          distance: Math.round(distance),
+          id: placeId
+        };
+        setSelectedPlace(selected);
 
-        if (tempInfoWindow) {
-          tempInfoWindow.close();
-          setTempInfoWindow(null);
-        }
+        // ⭐ 평점 fetch (place_id 기반)
+        fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
+          .then(res => res.json())
+          .then(ratingData => {
+            console.log("📊 평점 데이터:", ratingData);
+            setSelectedPlace(prev => ({
+              ...prev,
+              place_rating: ratingData.rating,
+              place_review_count: ratingData.count
+            }));
+          });
 
-        const latlng = new window.kakao.maps.LatLng(lat, lng);
+        // ⭐ 마커 관련 처리
+        if (mapObj) {
+          if (tempMarkerRef.current) {
+            tempMarkerRef.current.setMap(null);
+            tempMarkerRef.current = null;
+          }
 
-        const markerImage = fromSearchList
-          ? new window.kakao.maps.MarkerImage(
+          if (fadeTimerRef.current) {
+            clearInterval(fadeTimerRef.current);
+            fadeTimerRef.current = null;
+          }
+
+          if (tempInfoWindow) {
+            tempInfoWindow.close();
+            setTempInfoWindow(null);
+          }
+
+          const latlng = new window.kakao.maps.LatLng(lat, lng);
+
+          const markerImage = fromSearchList
+            ? new window.kakao.maps.MarkerImage(
               "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png",
               new window.kakao.maps.Size(24, 35)
             )
-          : undefined;
+            : undefined;
 
-        const marker = new window.kakao.maps.Marker({
-          position: latlng,
-          map: mapObj,
-          image: markerImage
-        });
+          const marker = new window.kakao.maps.Marker({
+            position: latlng,
+            map: mapObj,
+            image: markerImage
+          });
 
-        tempMarkerRef.current = marker;
-        setTempMarker(marker);
-        mapObj.panTo(latlng);
-      }
-    });
-};
+          tempMarkerRef.current = marker;
+          setTempMarker(marker);
+          mapObj.panTo(latlng);
+        }
+      });
+  };
 
 
 
@@ -546,76 +564,76 @@ const handlePlaceClick = (place, fromSearchList = false) => {
   };
 
   const attachClickEventToMarker = (marker, place) => {
-  window.kakao.maps.event.addListener(marker, 'click', () => {
-    const userId = localStorage.getItem("user_id");
+    window.kakao.maps.event.addListener(marker, 'click', () => {
+      const userId = localStorage.getItem("user_id");
 
-    const lat = parseFloat(place.latitude ?? place.lat);
-    const lng = parseFloat(place.longitude ?? place.lng);
-    const map = mapRef.current;
+      const lat = parseFloat(place.latitude ?? place.lat);
+      const lng = parseFloat(place.longitude ?? place.lng);
+      const map = mapRef.current;
 
-    if (!map || isNaN(lat) || isNaN(lng)) {
-      console.warn("❌ map 또는 좌표 문제", map, lat, lng);
-      return;
-    }
+      if (!map || isNaN(lat) || isNaN(lng)) {
+        console.warn("❌ map 또는 좌표 문제", map, lat, lng);
+        return;
+      }
 
-    const latlng = new window.kakao.maps.LatLng(lat, lng);
-    map.panTo(latlng);
+      const latlng = new window.kakao.maps.LatLng(lat, lng);
+      map.panTo(latlng);
 
-    fetch("http://localhost:5000/places")
-      .then(res => res.json())
-      .then(allPlaces => {
-        const matched = allPlaces.find(p =>
-          p.name === place.name &&
-          Math.abs(parseFloat(p.latitude) - lat) < 0.00001 &&
-          Math.abs(parseFloat(p.longitude) - lng) < 0.00001
-        );
+      fetch("http://localhost:5000/places")
+        .then(res => res.json())
+        .then(allPlaces => {
+          const matched = allPlaces.find(p =>
+            p.name === place.name &&
+            Math.abs(parseFloat(p.latitude) - lat) < 0.00001 &&
+            Math.abs(parseFloat(p.longitude) - lng) < 0.00001
+          );
 
-        if (!matched) {
-          console.warn("❌ matched 장소 없음", place.name, lat, lng);
-          return;
-        }
+          if (!matched) {
+            console.warn("❌ matched 장소 없음", place.name, lat, lng);
+            return;
+          }
 
-        const placeId = matched.id || matched.place_id;
-        if (!placeId) {
-          console.warn("❌ matched.id 없음", matched);
-          return;
-        }
+          const placeId = matched.id || matched.place_id;
+          if (!placeId) {
+            console.warn("❌ matched.id 없음", matched);
+            return;
+          }
 
-        fetch(`http://localhost:5000/user/${userId}/location`)
-          .then(res => res.json())
-          .then(pos => {
-            const dist = getDistance(
-              pos.latitude,
-              pos.longitude,
-              parseFloat(matched.latitude),
-              parseFloat(matched.longitude)
-            );
+          fetch(`http://localhost:5000/user/${userId}/location`)
+            .then(res => res.json())
+            .then(pos => {
+              const dist = getDistance(
+                pos.latitude,
+                pos.longitude,
+                parseFloat(matched.latitude),
+                parseFloat(matched.longitude)
+              );
 
-            fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
-              .then(res => res.json())
-              .then(ratingData => {
-                console.log("⭐ [마커 클릭] 평점 응답:", ratingData);
+              fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
+                .then(res => res.json())
+                .then(ratingData => {
+                  console.log("⭐ [마커 클릭] 평점 응답:", ratingData);
 
-                const selected = {
-                  place_name: matched.name,
-                  address_name: matched.address,
-                  y: parseFloat(matched.latitude),
-                  x: parseFloat(matched.longitude),
-                  phone: matched.phone,
-                  place_url: matched.place_url,
-                  usernames: matched.usernames
-                    ? matched.usernames.split(',').map(n => n.trim())
-                    : [],
-                  distance: Math.round(dist),
-                  place_rating: ratingData.rating,
-                  place_review_count: ratingData.count
-                };
-                setSelectedPlace(selected);
-              });
-          });
-      });
-  });
-};
+                  const selected = {
+                    place_name: matched.name,
+                    address_name: matched.address,
+                    y: parseFloat(matched.latitude),
+                    x: parseFloat(matched.longitude),
+                    phone: matched.phone,
+                    place_url: matched.place_url,
+                    usernames: matched.usernames
+                      ? matched.usernames.split(',').map(n => n.trim())
+                      : [],
+                    distance: Math.round(dist),
+                    place_rating: ratingData.rating,
+                    place_review_count: ratingData.count
+                  };
+                  setSelectedPlace(selected);
+                });
+            });
+        });
+    });
+  };
 
 
 
