@@ -1,5 +1,5 @@
 CREATE DATABASE foodmap1 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-use foodmap1;
+use foodmap;
 
 -- 사용자 테이블
 CREATE TABLE Users (
