@@ -9,6 +9,7 @@ import EditProfile from './pages/EditProfile.jsx';
 import UserPage from './pages/UserPage.jsx';
 import ReviewList from './pages/ReviewList';
 import WriteReview from './pages/WriteReview';
+import MyReviews from './pages/MyReviews.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -22,6 +23,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/user/:username" element={<UserPage />} />
         <Route path="/reviewlist" element={<ReviewList />} />
         <Route path="/write-review/:placeId" element={<WriteReview />} />
+        <Route path="/myreviews" element={<MyReviews />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>,

@@ -37,7 +37,8 @@ function Main() {
                     <p><strong>{userName}</strong>님 환영합니다!</p>
                     <button onClick={handleLogout} style={{ marginRight: '10px' }}>로그아웃</button>
                     <Link to="/mypage"><button style={{ marginRight: '10px' }}>마이페이지</button></Link>
-                    <Link to="/reviewlist"><button>리뷰 작성하기</button></Link> {/* ✅ 추가 */}
+                    <Link to="/myreviews"><button style={{ marginRight: '10px' }}>내가 작성한 리뷰 보기</button></Link>
+                    <Link to="/reviewlist"><button>리뷰 작성하기</button></Link>
                 </>
             ) : (
                 <>

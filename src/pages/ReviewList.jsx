@@ -36,11 +36,25 @@ function ReviewList() {
           ))}
         </ul>
       )}
-    
-      
+
+      {/* ✅ 메인으로 이동 버튼 추가 */}
+      <div style={{ marginTop: "20px" }}>
+        <a href="/">
+          <button style={{
+            padding: "8px 16px",
+            backgroundColor: "#357edd",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer"
+          }}>
+            메인으로 이동
+          </button>
+        </a>
+      </div>
     </div>
-    
   );
+
 }
 
 export default ReviewList;

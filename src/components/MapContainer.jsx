@@ -413,17 +413,19 @@ const MapContainer = () => {
         };
         setSelectedPlace(selected);
 
-        // ⭐ 평점 fetch (place_id 기반)
-        fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
-          .then(res => res.json())
-          .then(ratingData => {
-            console.log("📊 평점 데이터:", ratingData);
-            setSelectedPlace(prev => ({
-              ...prev,
-              place_rating: ratingData.rating,
-              place_review_count: ratingData.count
-            }));
-          });
+        // ⭐ 평점 fetch (fromSearchList가 아닐 때만)
+        if (!fromSearchList) {
+          fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
+            .then(res => res.json())
+            .then(ratingData => {
+              console.log("📊 평점 데이터:", ratingData);
+              setSelectedPlace(prev => ({
+                ...prev,
+                place_rating: ratingData.rating,
+                place_review_count: ratingData.count
+              }));
+            });
+        }
 
         // ⭐ 마커 관련 처리
         if (mapObj) {
@@ -463,8 +465,6 @@ const MapContainer = () => {
         }
       });
   };
-
-
 
 
 
@@ -718,7 +718,7 @@ const MapContainer = () => {
             const exactMatch = filtered.find(p =>
               p.place_name.toLowerCase().includes(searchKeyword.toLowerCase())
             );
-            handlePlaceClick(exactMatch || filtered[0]);
+            handlePlaceClick(exactMatch || filtered[0], true); // ✅ true로 명시
           }
         }, {
           location: userPosition, // ✅ DB에서 가져온 위치 기준

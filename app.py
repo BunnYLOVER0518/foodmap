@@ -14,7 +14,7 @@ DB_CONFIG = {
     "host": "localhost",
     "user": "root",
     "password": "fpelgkgo0518",
-    "database": "foodmap"
+    "database": "foodmap1"
 }
 
 
@@ -302,10 +302,6 @@ def delete_place():
     return jsonify({"message": "사용자 장소 및 리뷰 삭제 완료, 평점 갱신"})
 
 
-
-
-
-
 @app.route("/user_info/<username>")
 def get_user_info_by_name(username):
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -318,24 +314,27 @@ def get_user_info_by_name(username):
     return jsonify(user) if user else {}
 
 
-@app.route("/reviews/user/<username>")
-def get_user_reviews(username):
+@app.route("/reviews/user/<user_id>")
+def get_user_reviews(user_id):
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor(dictionary=True)
+
     query = """
-        SELECT r.*, p.name AS place_name 
+        SELECT 
+            r.*, 
+            p.name AS place_name,
+            i.image_path
         FROM Reviews r
         JOIN Places p ON r.place_id = p.id
+        LEFT JOIN Images i ON i.review_id = r.id
         WHERE r.user_id = %s
-        ORDER BY r.created_at DESC
+        ORDER BY r.created_at DESC, i.sort_order ASC
     """
-    cursor.execute(query, (username,))
+    cursor.execute(query, (user_id,))
     reviews = cursor.fetchall()
     cursor.close()
     conn.close()
     return jsonify(reviews)
-
-
 
 
 @app.route('/api/user/<user_id>/reviewable-places')
@@ -379,11 +378,11 @@ def get_place_info(place_id):
 
 @app.route('/reviews', methods=['POST'])
 def create_review():
-    data = request.get_json()
-    place_id = data.get("place_id")
-    user_id = data.get("user_id")
-    rating = data.get("rating")
-    description = data.get("description")
+    place_id = request.form.get("place_id")
+    user_id = request.form.get("user_id")
+    rating = request.form.get("rating")
+    description = request.form.get("description")
+    images = request.files.getlist("images")
 
     if not all([place_id, user_id, rating]):
         return jsonify({"error": "필수 항목 누락"}), 400
@@ -396,23 +395,38 @@ def create_review():
         INSERT INTO Reviews (place_id, user_id, rating, description, created_at)
         VALUES (%s, %s, %s, %s, NOW())
     """, (place_id, user_id, rating, description))
+    review_id = cursor.lastrowid
     conn.commit()
 
-    # 2. 기준 장소 정보 조회
+    # 2. 이미지 저장
+    for idx, image in enumerate(images):
+        if image:
+            ext = os.path.splitext(image.filename)[1]
+            filename = f"review_{review_id}_{idx}_{int(datetime.now().timestamp())}{ext}"
+            filepath = os.path.join(UPLOAD_FOLDER, filename)
+            image.save(filepath)
+
+            cursor.execute("""
+                INSERT INTO Images (review_id, image_path, sort_order)
+                VALUES (%s, %s, %s)
+            """, (review_id, filename, idx))
+    conn.commit()
+
+    # 3. 기준 장소 정보 조회
     cursor.execute("SELECT name, latitude, longitude FROM Places WHERE id = %s", (place_id,))
     place_info = cursor.fetchone()
     if not place_info:
         return jsonify({"error": "해당 장소 없음"}), 404
     name, lat, lng = place_info
 
-    # 3. 동일 장소의 모든 place_id 조회
+    # 4. 동일 장소의 모든 place_id 조회
     cursor.execute("""
         SELECT id FROM Places
         WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
     """, (name, lat, lng))
     place_ids = [row[0] for row in cursor.fetchall()]
 
-    # 4. 해당 place_id들의 평균 평점 계산
+    # 5. 평균 평점 계산 및 업데이트
     if place_ids:
         format_strings = ','.join(['%s'] * len(place_ids))
         cursor.execute(f"""
@@ -422,18 +436,14 @@ def create_review():
     else:
         avg_rating = 0.0
 
-    print(f"🧮 평균 평점: {avg_rating}")
-
-    # 5. 동일 장소 모든 place row에 rating 업데이트
     for pid in place_ids:
         cursor.execute("UPDATE Places SET rating = %s WHERE id = %s", (avg_rating, pid))
     conn.commit()
 
-    print("✅ Places 테이블 업데이트 완료")
-
     cursor.close()
     conn.close()
-    return jsonify({"message": "리뷰 작성 및 평점 반영 완료"})
+    return jsonify({"message": "리뷰 및 이미지 저장 완료, 평점 반영 완료"})
+
 
 
 @app.route('/place/rating')
@@ -486,6 +496,36 @@ def get_place_rating():
         "rating": round(avg, 1) if avg is not None else None,
         "count": count
     })
+
+@app.route("/reviews/by_user/<user_id>")
+def get_reviews_by_user(user_id):
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor(dictionary=True)
+
+    query = """
+        SELECT 
+            r.id,
+            r.user_id,
+            u.name AS writer_name,
+            r.place_id,
+            p.name AS place_name,
+            r.rating,
+            r.created_at,
+            r.review_count AS view_count,
+            r.description,
+            i.image_path
+        FROM Reviews r
+        JOIN Users u ON r.user_id = u.id
+        JOIN Places p ON r.place_id = p.id
+        LEFT JOIN Images i ON i.review_id = r.id
+        WHERE r.user_id = %s
+        ORDER BY r.created_at DESC, i.sort_order ASC
+    """
+    cursor.execute(query, (user_id,))
+    results = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(results)
 
 
 

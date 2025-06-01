@@ -77,4 +77,6 @@ select * from users;
 select * from places;
 select * from reviews;
 
+desc reviews;
+
 
