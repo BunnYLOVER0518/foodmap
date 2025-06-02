@@ -41,7 +41,6 @@ const MapContainer = () => {
 
   function handleDeleteMarker() {
     const user_id = localStorage.getItem("user_id");
-    console.log("🗑 삭제 요청 시작:", selectedPlace.place_name);
 
     fetch("http://localhost:5000/delete_place", {
       method: "DELETE",
@@ -53,16 +52,12 @@ const MapContainer = () => {
     })
       .then(res => res.json())
       .then(() => {
-        console.log("✅ DB 삭제 완료");
 
-        // 내 마커 목록에서 제거
         setMyMarkers(prev => {
           const updated = prev.filter(m => m.name !== selectedPlace.place_name);
-          console.log("🧹 마커 상태에서 제거됨:", updated);
           return updated;
         });
 
-        // 🔄 최신 usernames 확인
         fetch("http://localhost:5000/places")
           .then(res => res.json())
           .then(allPlaces => {
@@ -75,7 +70,6 @@ const MapContainer = () => {
             const usernamesLeft = matched?.usernames?.split(',').map(n => n.trim()).filter(Boolean) ?? [];
 
             if (usernamesLeft.length === 0) {
-              // 아무도 없으면 마커 완전 삭제
               setAllMarkers(prev => {
                 const isCloseEnough = (a, b) => Math.abs(a - b) < 0.00001;
 
@@ -86,20 +80,15 @@ const MapContainer = () => {
                     isCloseEnough(m.lng, parseFloat(selectedPlace.x));
 
                   if (match) {
-                    console.log("🗑 마커 삭제 대상:", m);
                     m.marker.setMap(null);
-                    console.log("🧪 삭제 후 getMap:", m.marker.getMap());
                   }
 
-                  return !match; // 제거 대상은 제외
+                  return !match;
                 });
 
                 return updated;
               });
             } else {
-              console.log("❗다른 사용자들이 남아 있으므로 마커 유지:", usernamesLeft);
-
-              // ✅ 내 마커만 제거
               setAllMarkers(prev => {
                 return prev.filter(m =>
                   !(
@@ -112,13 +101,11 @@ const MapContainer = () => {
               });
             }
 
-            // ✅ 버튼 전환을 위해 selectedPlace 갱신
             setSelectedPlace(prev => {
               if (!matched) return null;
 
               const updated = { ...prev, usernames: usernamesLeft };
 
-              // 🔄 평점도 새로 요청
               const placeId = matched.id;
               if (placeId) {
                 fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
@@ -138,8 +125,6 @@ const MapContainer = () => {
           });
       });
   }
-
-
 
   const user_id = localStorage.getItem("user_id");
   const isMyMarker = allMarkers.some(marker =>
@@ -163,9 +148,8 @@ const MapContainer = () => {
     const zoomControl = new window.kakao.maps.ZoomControl();
     map.addControl(zoomControl, window.kakao.maps.ControlPosition.RIGHT);
 
-    setMapObj(map); // ✅ mapObj 먼저 설정
+    setMapObj(map);
 
-    // ✅ 마커 fetch 로직은 setTimeout(0)으로 밀어서 mapObj 설정 이후에 실행
     setTimeout(() => {
       const isCloseEnough = (a, b) => Math.abs(a - b) < 0.00001;
 
@@ -241,9 +225,8 @@ const MapContainer = () => {
               });
             });
         });
-    }, 0); // ⏱ 비동기적으로 mapObj 설정 이후에 실행되도록 보장
+    }, 0);
 
-    // ✅ 지도 클릭 이벤트 (그대로 유지)
     window.kakao.maps.event.addListener(map, 'click', function (mouseEvent) {
       const latlng = mouseEvent.latLng;
       map.panTo(latlng);
@@ -278,7 +261,6 @@ const MapContainer = () => {
         }
       });
 
-      // 음식점
       places.categorySearch('FD6', (data, status) => {
         if (status === window.kakao.maps.services.Status.OK) {
           setRestaurants(data);
@@ -307,7 +289,6 @@ const MapContainer = () => {
         sort: window.kakao.maps.services.SortBy.DISTANCE
       });
 
-      // 카페
       places.categorySearch('CE7', (data, status) => {
         if (status === window.kakao.maps.services.Status.OK) {
           setCafes(data);
@@ -337,7 +318,6 @@ const MapContainer = () => {
       });
     });
 
-    // 내 위치 마커
     fetch(`http://localhost:5000/user/${userId}/location`)
       .then(res => res.json())
       .then(data => {
@@ -384,7 +364,6 @@ const MapContainer = () => {
     }
   }
 
-
   const handlePlaceClick = (place, fromSearchList = false) => {
     const userId = localStorage.getItem("user_id");
 
@@ -398,14 +377,11 @@ const MapContainer = () => {
         const lng = parseFloat(place.x);
         const distance = getDistance(userLat, userLng, lat, lng);
 
-        // 🔑 place.id 또는 place.place_id 추출
         const placeId = place.id || place.place_id;
         if (!placeId) {
-          console.warn("❌ placeId 없음. place 객체:", place);
           return;
         }
 
-        // ⭐ 장소 정보 우선 설정
         const selected = {
           ...place,
           distance: Math.round(distance),
@@ -413,12 +389,10 @@ const MapContainer = () => {
         };
         setSelectedPlace(selected);
 
-        // ⭐ 평점 fetch (fromSearchList가 아닐 때만)
         if (!fromSearchList) {
           fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
             .then(res => res.json())
             .then(ratingData => {
-              console.log("📊 평점 데이터:", ratingData);
               setSelectedPlace(prev => ({
                 ...prev,
                 place_rating: ratingData.rating,
@@ -427,7 +401,6 @@ const MapContainer = () => {
             });
         }
 
-        // ⭐ 마커 관련 처리
         if (mapObj) {
           if (tempMarkerRef.current) {
             tempMarkerRef.current.setMap(null);
@@ -466,9 +439,6 @@ const MapContainer = () => {
       });
   };
 
-
-
-
   const handleAddMarker = () => {
     const user_id = localStorage.getItem("user_id");
     const userName = localStorage.getItem("name");
@@ -488,8 +458,6 @@ const MapContainer = () => {
 
       setMyMarkerObjects(prev => [...prev, { name: selectedPlace.place_name, marker }]);
 
-
-      // ✅ 공통 마커 클릭 이벤트 등록
       attachClickEventToMarker(marker, {
         id: selectedPlace.id,
         name: selectedPlace.place_name,
@@ -521,7 +489,6 @@ const MapContainer = () => {
       })
         .then(res => res.json())
         .then(data => {
-          console.log("✅ DB 저장 완료:", data);
 
           setAllMarkers(prev => [
             ...prev,
@@ -536,7 +503,6 @@ const MapContainer = () => {
             }
           ]);
 
-          // 🔄 usernames 재조회
           fetch("http://localhost:5000/places")
             .then(res => res.json())
             .then(allPlaces => {
@@ -553,12 +519,10 @@ const MapContainer = () => {
                     ? matched.usernames.split(',').map(n => n.trim())
                     : []
                 }));
-                console.log("🧪 usernames 최신화 완료:", matched.usernames);
               }
             });
         })
         .catch(err => {
-          console.error("❌ DB 저장 실패:", err);
         });
     }
   };
@@ -566,13 +530,15 @@ const MapContainer = () => {
   const attachClickEventToMarker = (marker, place) => {
     window.kakao.maps.event.addListener(marker, 'click', () => {
       const userId = localStorage.getItem("user_id");
-
+      if (!userId) {
+        showLoginRequiredMessage();
+        return;
+      }
       const lat = parseFloat(place.latitude ?? place.lat);
       const lng = parseFloat(place.longitude ?? place.lng);
       const map = mapRef.current;
 
       if (!map || isNaN(lat) || isNaN(lng)) {
-        console.warn("❌ map 또는 좌표 문제", map, lat, lng);
         return;
       }
 
@@ -589,13 +555,11 @@ const MapContainer = () => {
           );
 
           if (!matched) {
-            console.warn("❌ matched 장소 없음", place.name, lat, lng);
             return;
           }
 
           const placeId = matched.id || matched.place_id;
           if (!placeId) {
-            console.warn("❌ matched.id 없음", matched);
             return;
           }
 
@@ -612,8 +576,6 @@ const MapContainer = () => {
               fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
                 .then(res => res.json())
                 .then(ratingData => {
-                  console.log("⭐ [마커 클릭] 평점 응답:", ratingData);
-
                   const selected = {
                     place_name: matched.name,
                     address_name: matched.address,
@@ -635,9 +597,6 @@ const MapContainer = () => {
     });
   };
 
-
-
-
   function findNearestPlace(clickedLatLng, places) {
     let minDist = Infinity;
     let nearest = null;
@@ -658,20 +617,19 @@ const MapContainer = () => {
 
   const handleMoveToMyLocation = () => {
     const userId = localStorage.getItem("user_id");
-    if (!mapObj || !userId) return;
+    if (!mapObj) return; 
 
     fetch(`http://localhost:5000/user/${userId}/location`)
       .then(res => res.json())
       .then(data => {
-        if (data.latitude != null && data.longitude != null) {
-          const userLatLng = new window.kakao.maps.LatLng(data.latitude, data.longitude);
-          mapObj.panTo(userLatLng);
-        } else {
-          alert("저장된 위치 정보가 없습니다.");
-        }
+        const lat = data.latitude ?? 37.55406383694701;
+        const lng = data.longitude ?? 126.92058772873095;
+        const userLatLng = new window.kakao.maps.LatLng(lat, lng);
+        mapObj.panTo(userLatLng);
       })
-      .catch(err => {
-        console.error("위치 정보 불러오기 실패:", err);
+      .catch(() => {
+        const defaultLatLng = new window.kakao.maps.LatLng(37.55406383694701, 126.92058772873095);
+        mapObj.panTo(defaultLatLng);
       });
   };
 
@@ -679,6 +637,12 @@ const MapContainer = () => {
     if (!searchKeyword.trim()) return;
 
     const userId = localStorage.getItem("user_id");
+    if (!userId) {
+      showLoginRequiredMessage();
+      return;
+    }
+
+    if (!searchKeyword.trim()) return;
 
     fetch(`http://localhost:5000/user/${userId}/location`)
       .then(res => res.json())
@@ -695,33 +659,29 @@ const MapContainer = () => {
             return;
           }
 
-          // 음식점/카페만 필터링
           let filtered = data.filter(
             (p) => p.category_group_code === "FD6" || p.category_group_code === "CE7"
           );
 
-          // 거리 계산 후 정렬
           filtered = filtered.map(p => ({
             ...p,
             distance: getDistance(userLat, userLng, parseFloat(p.y), parseFloat(p.x))
           })).sort((a, b) => a.distance - b.distance);
 
-          // 거리 제한 필터
           if (useDistanceFilter) {
             filtered = filtered.filter(p => p.distance <= 1000);
           }
 
           setSearchResults(filtered);
 
-          // 가장 가까운 장소 자동 선택
           if (filtered.length > 0) {
             const exactMatch = filtered.find(p =>
               p.place_name.toLowerCase().includes(searchKeyword.toLowerCase())
             );
-            handlePlaceClick(exactMatch || filtered[0], true); // ✅ true로 명시
+            handlePlaceClick(exactMatch || filtered[0], true);
           }
         }, {
-          location: userPosition, // ✅ DB에서 가져온 위치 기준
+          location: userPosition,
         });
       })
       .catch(() => {
@@ -740,12 +700,28 @@ const MapContainer = () => {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-
-
+  function showLoginRequiredMessage() {
+    const msgBox = document.createElement("div");
+    msgBox.innerText = "로그인 후 이용할 수 있는 기능입니다.";
+    Object.assign(msgBox.style, {
+      position: "fixed",
+      top: "20px",
+      left: "50%",
+      transform: "translateX(-50%)",
+      background: "#333",
+      color: "#fff",
+      padding: "10px 20px",
+      borderRadius: "8px",
+      zIndex: 9999,
+      fontSize: "14px",
+      boxShadow: "0 2px 6px rgba(0,0,0,0.3)"
+    });
+    document.body.appendChild(msgBox);
+    setTimeout(() => msgBox.remove(), 2000);
+  }
 
   return (
     <div style={{ display: "flex", width: "100%" }}>
-      {/* 좌측: 검색창 + 결과 목록 */}
       <div style={{ flex: 1, padding: "20px", borderRight: "1px solid #ccc" }}>
         <div style={{ margin: "10px 0" }}>
           <label style={{ fontSize: "14px" }}>
@@ -819,7 +795,6 @@ const MapContainer = () => {
         </ul>
       </div>
 
-      {/* 우측: 지도 + 음식점/카페 리스트 + 모달 */}
       <div style={{ flex: 3, display: "flex", flexDirection: "column", alignItems: "center", padding: "20px" }}>
         <div
           id="map"
@@ -852,7 +827,6 @@ const MapContainer = () => {
           </button>
         </div>
 
-        {/* 음식점 / 카페 리스트 */}
         {address && (
           <div style={{
             display: 'flex',
@@ -894,7 +868,6 @@ const MapContainer = () => {
           </div>
         )}
 
-        {/* 마커 정보 모달 */}
         {selectedPlace && (
           <div
             style={{
@@ -937,7 +910,6 @@ const MapContainer = () => {
               <p>📏 내 위치와의 거리: {selectedPlace.distance}m</p>
             )}
 
-            {/* ✅ 평점 표시 추가 */}
             {selectedPlace.place_rating !== undefined && (
               <p>
                 ⭐ 평점:{" "}
@@ -1009,8 +981,6 @@ const MapContainer = () => {
       </div>
     </div>
   );
-
-
 };
 
 export default MapContainer;

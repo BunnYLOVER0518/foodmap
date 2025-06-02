@@ -48,10 +48,17 @@ function WriteReview() {
       method: "POST",
       body: formData
     })
-      .then(res => res.json())
-      .then(data => {
+      .then(async res => {
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "리뷰 작성 실패");
+          return;
+        }
         alert("리뷰가 작성되었습니다.");
         navigate("/reviewlist");
+      })
+      .catch(err => {
+        alert("서버 에러가 발생했습니다.");
       });
   };
 

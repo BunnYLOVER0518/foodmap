@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import mysql.connector
 from datetime import datetime
+from pytz import timezone
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
@@ -14,7 +15,7 @@ DB_CONFIG = {
     "host": "localhost",
     "user": "root",
     "password": "fpelgkgo0518",
-    "database": "foodmap1"
+    "database": "foodmap"
 }
 
 
@@ -156,7 +157,7 @@ def add_place():
     longitude = data.get('longitude')
     address = data.get('address')
     category = data.get('category')
-    phone = data.get('phone')  # ✅ 추가
+    phone = data.get('phone') 
     user_id = data.get('user_id')
 
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -246,7 +247,6 @@ def delete_place():
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor()
 
-    # 1. 삭제 전 기준 위치 정보 확보
     cursor.execute("SELECT latitude, longitude FROM Places WHERE name = %s AND user_id = %s", (name, user_id))
     coords = cursor.fetchone()
 
@@ -257,14 +257,12 @@ def delete_place():
 
     lat, lng = coords
 
-    # 2. 동일 장소의 모든 place_id 조회 (좌표 기준 동일 장소)
     cursor.execute("""
         SELECT id FROM Places
         WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
     """, (name, lat, lng))
     place_ids = [row[0] for row in cursor.fetchall()]
-
-    # 3. 로그인된 사용자의 리뷰만 삭제
+    
     if place_ids:
         format_strings = ','.join(['%s'] * len(place_ids))
         cursor.execute(f"""
@@ -273,18 +271,15 @@ def delete_place():
         """, (user_id, *place_ids))
         conn.commit()
 
-    # 4. 로그인된 사용자의 place 삭제
     cursor.execute("DELETE FROM Places WHERE name = %s AND user_id = %s", (name, user_id))
     conn.commit()
 
-    # 5. 남아있는 동일 장소 place_id 다시 조회
     cursor.execute("""
         SELECT id FROM Places
         WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
     """, (name, lat, lng))
     remaining_ids = [row[0] for row in cursor.fetchall()]
 
-    # 6. 남은 리뷰 기준으로 평점 재계산
     if remaining_ids:
         format_strings = ','.join(['%s'] * len(remaining_ids))
         cursor.execute(f"""
@@ -387,10 +382,16 @@ def create_review():
     if not all([place_id, user_id, rating]):
         return jsonify({"error": "필수 항목 누락"}), 400
 
+    try:
+        rating_float = float(rating)
+        if rating_float < 0 or rating_float > 5:
+            return jsonify({"error": "평점은 0 이상 5 이하로 입력해야 합니다."}), 400
+    except ValueError:
+        return jsonify({"error": "평점은 숫자여야 합니다."}), 400
+
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor()
 
-    # 1. 리뷰 저장
     cursor.execute("""
         INSERT INTO Reviews (place_id, user_id, rating, description, created_at)
         VALUES (%s, %s, %s, %s, NOW())
@@ -398,7 +399,6 @@ def create_review():
     review_id = cursor.lastrowid
     conn.commit()
 
-    # 2. 이미지 저장
     for idx, image in enumerate(images):
         if image:
             ext = os.path.splitext(image.filename)[1]
@@ -412,21 +412,18 @@ def create_review():
             """, (review_id, filename, idx))
     conn.commit()
 
-    # 3. 기준 장소 정보 조회
     cursor.execute("SELECT name, latitude, longitude FROM Places WHERE id = %s", (place_id,))
     place_info = cursor.fetchone()
     if not place_info:
         return jsonify({"error": "해당 장소 없음"}), 404
     name, lat, lng = place_info
 
-    # 4. 동일 장소의 모든 place_id 조회
     cursor.execute("""
         SELECT id FROM Places
         WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
     """, (name, lat, lng))
     place_ids = [row[0] for row in cursor.fetchall()]
 
-    # 5. 평균 평점 계산 및 업데이트
     if place_ids:
         format_strings = ','.join(['%s'] * len(place_ids))
         cursor.execute(f"""
@@ -444,8 +441,6 @@ def create_review():
     conn.close()
     return jsonify({"message": "리뷰 및 이미지 저장 완료, 평점 반영 완료"})
 
-
-
 @app.route('/place/rating')
 def get_place_rating():
     place_id = request.args.get("place_id")
@@ -457,7 +452,6 @@ def get_place_rating():
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor()
 
-    # 1. 기준 장소 정보 얻기
     cursor.execute("SELECT name, latitude, longitude FROM Places WHERE id = %s", (place_id,))
     place_info = cursor.fetchone()
     print(f"📍 기준 장소 정보 (place_id={place_id}):", place_info)
@@ -468,7 +462,6 @@ def get_place_rating():
     
     name, lat, lng = place_info
 
-    # 2. 동일 장소의 모든 place_id 가져오기
     cursor.execute("""
         SELECT id FROM Places
         WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
@@ -476,7 +469,6 @@ def get_place_rating():
     place_ids = [row[0] for row in cursor.fetchall()]
     print("🎯 동일 장소 place_ids:", place_ids)
 
-    # 3. 평균 및 개수 계산
     if place_ids:
         format_strings = ','.join(['%s'] * len(place_ids))
         cursor.execute(f"""
@@ -499,6 +491,9 @@ def get_place_rating():
 
 @app.route("/reviews/by_user/<user_id>")
 def get_reviews_by_user(user_id):
+    import pytz
+    kst = pytz.timezone('Asia/Seoul')
+
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor(dictionary=True)
 
@@ -523,11 +518,12 @@ def get_reviews_by_user(user_id):
     """
     cursor.execute(query, (user_id,))
     results = cursor.fetchall()
+    for row in results:
+        if row["created_at"]:
+            row["created_at"] = row["created_at"].astimezone(kst).strftime('%Y-%m-%d %H:%M:%S')
     cursor.close()
     conn.close()
     return jsonify(results)
-
-
 
 if __name__ == '__main__':
     app.run(debug=True)

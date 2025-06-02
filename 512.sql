@@ -58,25 +58,16 @@ CREATE TABLE Images (
     FOREIGN KEY (review_id) REFERENCES Reviews(id)
 );
 
--- 리뷰 좋아요 테이블
-CREATE TABLE Review_likes (
-    user_id VARCHAR(100),                        -- 사용자 ID (PK)
-    review_id INT,                               -- 리뷰 ID (PK)
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, review_id),
-    FOREIGN KEY (user_id) REFERENCES Users(id),
-    FOREIGN KEY (review_id) REFERENCES Reviews(id)
-);
-
-
 SET FOREIGN_KEY_CHECKS = 0;
-TRUNCATE TABLE places;
+TRUNCATE TABLE reviews;
 SET FOREIGN_KEY_CHECKS = 1;
 
 select * from users;
 select * from places;
 select * from reviews;
 
-desc reviews;
+drop table review_likes;
+
+
 
 
