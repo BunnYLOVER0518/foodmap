@@ -19,7 +19,6 @@ DB_CONFIG = {
     "database": "foodmap"
 }
 
-
 @app.route('/signup', methods=['POST'])
 def signup():
     id = request.form['id']
@@ -333,8 +332,14 @@ def get_user_reviews(user_id):
     reviews = cursor.fetchall()
     cursor.close()
     conn.close()
-    return jsonify(reviews)
 
+    # ⏰ KST로 변환
+    kst = timezone("Asia/Seoul")
+    for r in reviews:
+        if isinstance(r["created_at"], datetime):
+            r["created_at"] = r["created_at"].astimezone(kst).strftime('%Y-%m-%d %H:%M:%S')
+
+    return jsonify(reviews)
 
 @app.route('/api/user/<user_id>/reviewable-places')
 def get_reviewable_places(user_id):
@@ -575,6 +580,8 @@ def get_reviews_by_place(place_id):
 
     return jsonify(list(grouped.values()))
 
+from pytz import timezone
+
 @app.route('/review/<int:review_id>', methods=['GET'])
 def get_review_detail(review_id):
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -604,6 +611,15 @@ def get_review_detail(review_id):
     """, (review_id,))
     comments = cursor.fetchall()
 
+    # ⏰ KST로 변환
+    kst = timezone("Asia/Seoul")
+    if review and isinstance(review["created_at"], datetime):
+        review["created_at"] = review["created_at"].astimezone(kst).strftime('%Y-%m-%d %H:%M:%S')
+
+    for c in comments:
+        if isinstance(c["created_at"], datetime):
+            c["created_at"] = c["created_at"].astimezone(kst).strftime('%Y-%m-%d %H:%M:%S')
+
     cursor.close()
     conn.close()
 
@@ -613,7 +629,7 @@ def get_review_detail(review_id):
 def post_comment(review_id):
     data = request.get_json()
     user_id = data.get('user_id')
-    description = data.get('description')  # ✅ 프론트와 동일하게 변경
+    description = data.get('description')
 
     if not user_id or not description:
         return jsonify({"error": "댓글 내용이 비어 있습니다."}), 400
@@ -623,7 +639,7 @@ def post_comment(review_id):
     cursor.execute("""
         INSERT INTO Comments (review_id, user_id, description, created_at)
         VALUES (%s, %s, %s, NOW())
-    """, (review_id, user_id, description))  # ✅ 변경된 변수 사용
+    """, (review_id, user_id, description))
     conn.commit()
     cursor.close()
     conn.close()

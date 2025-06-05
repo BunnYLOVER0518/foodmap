@@ -66,5 +66,6 @@ select * from users;
 select * from places;
 select * from reviews;
 select * from images;
+select * from comments;
 
 drop table review_likes;
