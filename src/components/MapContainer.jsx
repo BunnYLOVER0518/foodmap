@@ -18,7 +18,9 @@ const MapContainer = () => {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [useDistanceFilter, setUseDistanceFilter] = useState(false);
-
+  const [placeReviews, setPlaceReviews] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const reviewsPerPage = 2;
 
   useEffect(() => {
     const scriptId = "kakao-map-script";
@@ -378,18 +380,21 @@ const MapContainer = () => {
         const distance = getDistance(userLat, userLng, lat, lng);
 
         const placeId = place.id || place.place_id;
-        if (!placeId) {
-          return;
-        }
+        if (!placeId) return;
 
         const selected = {
           ...place,
           distance: Math.round(distance),
           id: placeId
         };
+
         setSelectedPlace(selected);
 
-        if (!fromSearchList) {
+        // 마커 클릭이 아닌 경우 평점/리뷰 초기화
+        if (fromSearchList) {
+          setPlaceReviews([]);
+        } else {
+          // 마커 클릭 시 평점/리뷰 가져오기
           fetch(`http://localhost:5000/place/rating?place_id=${placeId}`)
             .then(res => res.json())
             .then(ratingData => {
@@ -398,6 +403,13 @@ const MapContainer = () => {
                 place_rating: ratingData.rating,
                 place_review_count: ratingData.count
               }));
+            });
+
+          fetch(`http://localhost:5000/reviews/by_place/${placeId}`)
+            .then(res => res.json())
+            .then(data => {
+              setPlaceReviews(data);
+              setCurrentPage(1);
             });
         }
 
@@ -591,6 +603,13 @@ const MapContainer = () => {
                     place_review_count: ratingData.count
                   };
                   setSelectedPlace(selected);
+                  fetch(`http://localhost:5000/reviews/by_place/${placeId}`)
+                    .then(res => res.json())
+                    .then(data => {
+                      setPlaceReviews(data);
+                      setCurrentPage(1);
+                      console.log("리뷰 요청 placeId:", placeId);
+                    });
                 });
             });
         });
@@ -617,7 +636,7 @@ const MapContainer = () => {
 
   const handleMoveToMyLocation = () => {
     const userId = localStorage.getItem("user_id");
-    if (!mapObj) return; 
+    if (!mapObj) return;
 
     fetch(`http://localhost:5000/user/${userId}/location`)
       .then(res => res.json())
@@ -719,6 +738,11 @@ const MapContainer = () => {
     document.body.appendChild(msgBox);
     setTimeout(() => msgBox.remove(), 2000);
   }
+
+  const indexOfLastReview = currentPage * reviewsPerPage;
+  const indexOfFirstReview = indexOfLastReview - reviewsPerPage;
+  const currentReviews = placeReviews.slice(indexOfFirstReview, indexOfLastReview);
+  const totalPages = Math.ceil(placeReviews.length / reviewsPerPage);
 
   return (
     <div style={{ display: "flex", width: "100%" }}>
@@ -869,20 +893,18 @@ const MapContainer = () => {
         )}
 
         {selectedPlace && (
-          <div
-            style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              backgroundColor: '#fff',
-              border: '1px solid #ccc',
-              borderRadius: '10px',
-              padding: '20px',
-              zIndex: 9999,
-              width: '300px'
-            }}
-          >
+          <div style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: '#fff',
+            border: '1px solid #ccc',
+            borderRadius: '10px',
+            padding: '20px',
+            zIndex: 9999,
+            width: '300px'
+          }}>
             <h3>{selectedPlace.place_name}</h3>
             <p>📍 {selectedPlace.address_name}</p>
             <p>📞 {selectedPlace.phone || '정보 없음'}</p>
@@ -893,12 +915,7 @@ const MapContainer = () => {
                 {Array.isArray(selectedPlace.usernames)
                   ? selectedPlace.usernames.map((name, idx) => (
                     <span key={idx}>
-                      <a
-                        href={`/user/${name}`}
-                        style={{ color: "#007aff", textDecoration: "underline", cursor: "pointer" }}
-                      >
-                        {name}
-                      </a>
+                      <a href={`/user/${name}`} style={{ color: "#007aff", textDecoration: "underline", cursor: "pointer" }}>{name}</a>
                       {idx < selectedPlace.usernames.length - 1 && ", "}
                     </span>
                   ))
@@ -930,43 +947,104 @@ const MapContainer = () => {
             >
               지도에서 보기
             </a>
-            <br />
+
+            {selectedPlace.place_rating !== undefined && (
+              <>
+                {/* 중간 구분선 */}
+                <hr style={{ margin: '15px 0' }} />
+                <h4>📝 사용자 리뷰</h4>
+
+                {currentReviews.length === 0 ? (
+                  <p>아직 리뷰가 없습니다.</p>
+                ) : (
+                  <ul style={{ paddingLeft: '15px' }}>
+                    {currentReviews.map((r, idx) => (
+                      <li key={idx} style={{ marginBottom: '10px', fontSize: '14px' }}>
+                        ⭐ {r.rating}점 ({r.created_at})<br />
+                        {r.description}
+                        {r.images?.length > 0 && (
+                          <div
+                            style={{
+                              marginTop: "5px",
+                              display: "flex",
+                              justifyContent: r.images.length === 1 ? "center" : "flex-start",
+                              overflowX: r.images.length === 1 ? "visible" : "auto",
+                              gap: "6px"
+                            }}
+                          >
+                            {r.images.map((img, i) => (
+                              <img
+                                key={i}
+                                src={`http://localhost:5000/images/${img}`}
+                                alt="review"
+                                style={{
+                                  height: "100px",
+                                  borderRadius: "6px"
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {totalPages > 1 && (
+                  <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                    {Array.from({ length: totalPages }, (_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setCurrentPage(i + 1)}
+                        style={{
+                          margin: "0 3px",
+                          backgroundColor: currentPage === i + 1 ? "#357edd" : "#eee",
+                          color: currentPage === i + 1 ? "white" : "black",
+                          border: "none",
+                          borderRadius: "4px",
+                          padding: "2px 8px",
+                          fontSize: "12px",
+                          cursor: "pointer"
+                        }}
+                      >
+                        {i + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+
             <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
-              <button
-                onClick={() => {
-                  if (tempInfoWindow) {
-                    tempInfoWindow.close();
-                    setTempInfoWindow(null);
-                  }
-
-                  if (tempMarkerRef.current) {
-                    let opacity = 1.0;
-                    if (fadeTimerRef.current) {
+              <button onClick={() => {
+                if (tempInfoWindow) {
+                  tempInfoWindow.close();
+                  setTempInfoWindow(null);
+                }
+                if (tempMarkerRef.current) {
+                  let opacity = 1.0;
+                  if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
+                  fadeTimerRef.current = setInterval(() => {
+                    if (!tempMarkerRef.current) {
                       clearInterval(fadeTimerRef.current);
+                      fadeTimerRef.current = null;
+                      return;
                     }
-                    fadeTimerRef.current = setInterval(() => {
-                      if (!tempMarkerRef.current) {
-                        clearInterval(fadeTimerRef.current);
-                        fadeTimerRef.current = null;
-                        return;
-                      }
-
-                      opacity -= 0.02;
-                      if (opacity <= 0) {
-                        tempMarkerRef.current.setMap(null);
-                        tempMarkerRef.current = null;
-                        clearInterval(fadeTimerRef.current);
-                        fadeTimerRef.current = null;
-                      } else {
-                        tempMarkerRef.current.setOpacity(opacity);
-                      }
-                    }, 50);
-                  }
-
-                  setTempMarker(null);
-                  setSelectedPlace(null);
-                }}
-              >
+                    opacity -= 0.02;
+                    if (opacity <= 0) {
+                      tempMarkerRef.current.setMap(null);
+                      tempMarkerRef.current = null;
+                      clearInterval(fadeTimerRef.current);
+                      fadeTimerRef.current = null;
+                    } else {
+                      tempMarkerRef.current.setOpacity(opacity);
+                    }
+                  }, 50);
+                }
+                setTempMarker(null);
+                setSelectedPlace(null);
+              }}>
                 닫기
               </button>
               {!isMyMarker ? (
@@ -977,6 +1055,7 @@ const MapContainer = () => {
             </div>
           </div>
         )}
+
 
       </div>
     </div>

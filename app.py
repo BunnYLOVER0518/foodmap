@@ -15,6 +15,7 @@ DB_CONFIG = {
     "host": "localhost",
     "user": "root",
     "password": "fpelgkgo0518",
+    'port': 3306,
     "database": "foodmap"
 }
 
@@ -157,7 +158,7 @@ def add_place():
     longitude = data.get('longitude')
     address = data.get('address')
     category = data.get('category')
-    phone = data.get('phone') 
+    phone = data.get('phone')
     user_id = data.get('user_id')
 
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -247,7 +248,8 @@ def delete_place():
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT latitude, longitude FROM Places WHERE name = %s AND user_id = %s", (name, user_id))
+    cursor.execute(
+        "SELECT latitude, longitude FROM Places WHERE name = %s AND user_id = %s", (name, user_id))
     coords = cursor.fetchone()
 
     if not coords:
@@ -262,7 +264,7 @@ def delete_place():
         WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
     """, (name, lat, lng))
     place_ids = [row[0] for row in cursor.fetchall()]
-    
+
     if place_ids:
         format_strings = ','.join(['%s'] * len(place_ids))
         cursor.execute(f"""
@@ -271,7 +273,8 @@ def delete_place():
         """, (user_id, *place_ids))
         conn.commit()
 
-    cursor.execute("DELETE FROM Places WHERE name = %s AND user_id = %s", (name, user_id))
+    cursor.execute(
+        "DELETE FROM Places WHERE name = %s AND user_id = %s", (name, user_id))
     conn.commit()
 
     cursor.execute("""
@@ -288,7 +291,8 @@ def delete_place():
         avg_rating = cursor.fetchone()[0]
 
         for pid in remaining_ids:
-            cursor.execute("UPDATE Places SET rating = %s WHERE id = %s", (avg_rating, pid))
+            cursor.execute(
+                "UPDATE Places SET rating = %s WHERE id = %s", (avg_rating, pid))
         conn.commit()
 
     cursor.close()
@@ -371,6 +375,7 @@ def get_place_info(place_id):
     else:
         return jsonify({"error": "장소를 찾을 수 없습니다."}), 404
 
+
 @app.route('/reviews', methods=['POST'])
 def create_review():
     place_id = request.form.get("place_id")
@@ -412,7 +417,8 @@ def create_review():
             """, (review_id, filename, idx))
     conn.commit()
 
-    cursor.execute("SELECT name, latitude, longitude FROM Places WHERE id = %s", (place_id,))
+    cursor.execute(
+        "SELECT name, latitude, longitude FROM Places WHERE id = %s", (place_id,))
     place_info = cursor.fetchone()
     if not place_info:
         return jsonify({"error": "해당 장소 없음"}), 404
@@ -434,12 +440,14 @@ def create_review():
         avg_rating = 0.0
 
     for pid in place_ids:
-        cursor.execute("UPDATE Places SET rating = %s WHERE id = %s", (avg_rating, pid))
+        cursor.execute(
+            "UPDATE Places SET rating = %s WHERE id = %s", (avg_rating, pid))
     conn.commit()
 
     cursor.close()
     conn.close()
     return jsonify({"message": "리뷰 및 이미지 저장 완료, 평점 반영 완료"})
+
 
 @app.route('/place/rating')
 def get_place_rating():
@@ -452,14 +460,15 @@ def get_place_rating():
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT name, latitude, longitude FROM Places WHERE id = %s", (place_id,))
+    cursor.execute(
+        "SELECT name, latitude, longitude FROM Places WHERE id = %s", (place_id,))
     place_info = cursor.fetchone()
     print(f"📍 기준 장소 정보 (place_id={place_id}):", place_info)
 
     if not place_info:
         print("❌ 해당 place_id에 대한 장소 없음")
         return jsonify({"rating": None, "count": 0})
-    
+
     name, lat, lng = place_info
 
     cursor.execute("""
@@ -489,17 +498,36 @@ def get_place_rating():
         "count": count
     })
 
-@app.route("/reviews/by_user/<user_id>")
-def get_reviews_by_user(user_id):
-    import pytz
-    kst = pytz.timezone('Asia/Seoul')
 
+@app.route("/reviews/by_place/<int:place_id>")
+def get_reviews_by_place(place_id):
     conn = mysql.connector.connect(**DB_CONFIG)
     cursor = conn.cursor(dictionary=True)
 
-    query = """
+    # 1. 기준 장소 정보 가져오기
+    cursor.execute(
+        "SELECT name, latitude, longitude FROM Places WHERE id = %s", (place_id,))
+    place = cursor.fetchone()
+
+    if not place:
+        return jsonify([])
+
+    name, lat, lng = place["name"], place["latitude"], place["longitude"]
+
+    # 2. 동일 장소인 place_id 모두 조회
+    cursor.execute("""
+        SELECT id FROM Places
+        WHERE name = %s AND ABS(latitude - %s) < 0.00001 AND ABS(longitude - %s) < 0.00001
+    """, (name, lat, lng))
+    place_ids = [row["id"] for row in cursor.fetchall()]
+
+    if not place_ids:
+        return jsonify([])
+
+    format_strings = ','.join(['%s'] * len(place_ids))
+    cursor.execute(f"""
         SELECT 
-            r.id,
+            r.id AS review_id,
             r.user_id,
             u.name AS writer_name,
             r.place_id,
@@ -513,17 +541,94 @@ def get_reviews_by_user(user_id):
         JOIN Users u ON r.user_id = u.id
         JOIN Places p ON r.place_id = p.id
         LEFT JOIN Images i ON i.review_id = r.id
-        WHERE r.user_id = %s
+        WHERE r.place_id IN ({format_strings})
         ORDER BY r.created_at DESC, i.sort_order ASC
-    """
-    cursor.execute(query, (user_id,))
-    results = cursor.fetchall()
-    for row in results:
-        if row["created_at"]:
-            row["created_at"] = row["created_at"].astimezone(kst).strftime('%Y-%m-%d %H:%M:%S')
+    """, tuple(place_ids))
+
+    rows = cursor.fetchall()
     cursor.close()
     conn.close()
-    return jsonify(results)
+
+    # 병합 처리
+    from collections import defaultdict
+    from pytz import timezone
+
+    kst = timezone("Asia/Seoul")
+    grouped = {}
+    for row in rows:
+        rid = row["review_id"]
+        if rid not in grouped:
+            grouped[rid] = {
+                "id": rid,
+                "user_id": row["user_id"],
+                "writer_name": row["writer_name"],
+                "place_id": row["place_id"],
+                "place_name": row["place_name"],
+                "rating": row["rating"],
+                "created_at": row["created_at"].astimezone(kst).strftime('%Y-%m-%d %H:%M:%S') if row["created_at"] else None,
+                "view_count": row["view_count"],
+                "description": row["description"],
+                "images": []
+            }
+        if row["image_path"]:
+            grouped[rid]["images"].append(row["image_path"])
+
+    return jsonify(list(grouped.values()))
+
+@app.route('/review/<int:review_id>', methods=['GET'])
+def get_review_detail(review_id):
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor(dictionary=True)
+
+    # 조회수 증가
+    cursor.execute("UPDATE Reviews SET review_count = review_count + 1 WHERE id = %s", (review_id,))
+    conn.commit()
+
+    # 리뷰 정보
+    cursor.execute("""
+        SELECT r.*, u.name AS writer_name, p.name AS place_name
+        FROM Reviews r
+        JOIN Users u ON r.user_id = u.id
+        JOIN Places p ON r.place_id = p.id
+        WHERE r.id = %s
+    """, (review_id,))
+    review = cursor.fetchone()
+
+    # 댓글 정보
+    cursor.execute("""
+        SELECT c.*, u.name AS commenter_name
+        FROM Comments c
+        JOIN Users u ON c.user_id = u.id
+        WHERE c.review_id = %s
+        ORDER BY c.created_at ASC
+    """, (review_id,))
+    comments = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"review": review, "comments": comments})
+
+@app.route('/review/<int:review_id>/comment', methods=['POST'])
+def post_comment(review_id):
+    data = request.get_json()
+    user_id = data.get('user_id')
+    description = data.get('description')  # ✅ 프론트와 동일하게 변경
+
+    if not user_id or not description:
+        return jsonify({"error": "댓글 내용이 비어 있습니다."}), 400
+
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO Comments (review_id, user_id, description, created_at)
+        VALUES (%s, %s, %s, NOW())
+    """, (review_id, user_id, description))  # ✅ 변경된 변수 사용
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "댓글이 등록되었습니다."})
 
 if __name__ == '__main__':
     app.run(debug=True)
