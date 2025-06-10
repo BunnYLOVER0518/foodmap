@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import './Main.css';
 import { Link, useNavigate } from 'react-router-dom';
 import MapContainer from '../components/MapContainer';
 
@@ -8,7 +7,6 @@ function Main() {
     const userId = localStorage.getItem("user_id");
     const [userName, setUserName] = useState("");
 
-    // ✅ DB에서 최신 사용자 이름 가져오기
     useEffect(() => {
         if (userId) {
             fetch(`http://localhost:5000/user/${userId}`)
@@ -29,26 +27,162 @@ function Main() {
     };
 
     return (
-        <div className="container">
-            <h1>메인 페이지입니다</h1>
+        <>
+            <style>{`
+.container {
+                    text-align: center;
+                    margin-top: 50px;
+                    font-family: Arial, sans-serif;
+                }
 
-            {userId ? (
-                <>
-                    <p><strong>{userName}</strong>님 환영합니다!</p>
-                    <button onClick={handleLogout} style={{ marginRight: '10px' }}>로그아웃</button>
-                    <Link to="/mypage"><button style={{ marginRight: '10px' }}>마이페이지</button></Link>
-                    <Link to="/myreviews"><button style={{ marginRight: '10px' }}>내가 작성한 리뷰 보기</button></Link>
-                    <Link to="/reviewlist"><button>리뷰 작성하기</button></Link>
-                </>
-            ) : (
-                <>
-                    <Link to="/login"><button style={{ marginRight: '10px' }}>로그인</button></Link>
-                    <Link to="/signup"><button>회원가입</button></Link>
-                </>
-            )}
+                .form-group {
+                    margin-bottom: 15px;
+                }
 
-            <MapContainer key={userId || "guest"} />
-        </div>
+                input[type="text"],
+                input[type="password"],
+                input[type="file"] {
+                    padding: 8px;
+                    width: 250px;
+                    margin-top: 5px;
+                }
+
+                button {
+                    margin-top: 10px;
+                    padding: 8px 16px;
+                    background-color: #357edd;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                }
+
+                button:hover {
+                    background-color: #2a5db0;
+                }
+
+                .button-group {
+                    margin-top: 20px;
+                }
+
+                img.profile {
+                    width: 150px;
+                    height: 150px;
+                    object-fit: cover;
+                    border-radius: 50%;
+                    margin-top: 15px;
+                }
+
+                body {
+                    margin: 0;
+                    height: 100vh;
+                    font-family: Arial, sans-serif;
+                }
+
+                .sidebar {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    height: 100%;
+                    width: 60px;
+                    background: #357edd;
+                    color: white;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-start;
+                    padding-top: 20px;
+                    transition: width 0.3s ease;
+                    overflow: hidden;
+                    z-index: 1000;
+                }
+
+                .sidebar:hover {
+                    width: 200px;
+                }
+
+                .sidebar-item {
+                    display: flex;
+                    align-items: center;
+                    padding: 12px 20px;
+                    width: 100%;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                    text-decoration: none;
+                    color: white;
+                }
+
+                .sidebar-item:hover {
+                    background: #2a5db0;
+                }
+
+                .sidebar-icon {
+                    width: 24px;
+                    height: 24px;
+                    margin-right: 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                .sidebar-label {
+                    white-space: nowrap;
+                    opacity: 0;
+                    transition: opacity 0.3s ease;
+                }
+
+                .sidebar:hover .sidebar-label {
+                    opacity: 1;
+                }
+
+                .container {
+                    margin-left: 60px;
+                    transition: margin-left 0.3s ease;
+                    padding: 20px;
+                }
+
+                .sidebar:hover ~ .container {
+                    margin-left: 200px;
+                }
+            `}</style>
+
+            <div className="sidebar">
+                {userId ? (
+                    <>
+                        <div className="sidebar-item" onClick={handleLogout}>
+                            <div className="sidebar-icon">⏻</div>
+                            <div className="sidebar-label">로그아웃</div>
+                        </div>
+                        <Link to="/mypage" className="sidebar-item">
+                            <div className="sidebar-icon">👤</div>
+                            <div className="sidebar-label">마이페이지</div>
+                        </Link>
+                        <Link to="/myreviews" className="sidebar-item">
+                            <div className="sidebar-icon">📝</div>
+                            <div className="sidebar-label">내 리뷰</div>
+                        </Link>
+                        <Link to="/reviewlist" className="sidebar-item">
+                            <div className="sidebar-icon">✏️</div>
+                            <div className="sidebar-label">리뷰 작성</div>
+                        </Link>
+                    </>
+                ) : (
+                    <>
+                        <Link to="/login" className="sidebar-item">
+                            <div className="sidebar-icon">🔐</div>
+                            <div className="sidebar-label">로그인</div>
+                        </Link>
+                        <Link to="/signup" className="sidebar-item">
+                            <div className="sidebar-icon">🆕</div>
+                            <div className="sidebar-label">회원가입</div>
+                        </Link>
+                    </>
+                )}
+            </div>
+
+            <div className="container">
+                <MapContainer key={userId || "guest"} />
+            </div>
+        </>
     );
 }
 
