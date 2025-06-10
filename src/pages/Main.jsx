@@ -29,7 +29,7 @@ function Main() {
     return (
         <>
             <style>{`
-.container {
+                .container {
                     text-align: center;
                     margin-top: 50px;
                     font-family: Arial, sans-serif;
@@ -180,6 +180,11 @@ function Main() {
             </div>
 
             <div className="container">
+                {userId && (
+                    <div style={{ textAlign: "center", marginBottom: "20px", fontSize: "18px" }}>
+                        <h2>{userName}님 환영합니다 👋</h2>
+                    </div>
+                )}
                 <MapContainer key={userId || "guest"} />
             </div>
         </>
